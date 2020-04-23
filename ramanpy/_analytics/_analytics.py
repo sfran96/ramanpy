@@ -104,7 +104,7 @@ def _testRegressors(spectra, to_predict, multithread, dim_red_only):
     pca_std.fit(X_std)  # Std
     n_components_std = pca_std.explained_variance_ratio_.size
     for i in range(1, n_components_std):
-        expl_var = pca_std.explained_variance_ratio_.sum()
+        expl_var = pca_std.explained_variance_ratio_[0:i+1].sum()
         if(expl_var > 0.9):
             n_components_std = i
             pca_std = PCA(n_components=n_components_std)
@@ -115,7 +115,7 @@ def _testRegressors(spectra, to_predict, multithread, dim_red_only):
     pca_pwr.fit(X_pwr)  # Pwr
     n_components_pwr = pca_pwr.explained_variance_ratio_.size
     for i in range(1, n_components_pwr):
-        expl_var = pca_pwr.explained_variance_ratio_.sum()
+        expl_var = pca_pwr.explained_variance_ratio_[0:i+1].sum()
         if(expl_var > 0.9):
             n_components_pwr = i
             pca_pwr = PCA(n_components=n_components_pwr)
@@ -127,7 +127,7 @@ def _testRegressors(spectra, to_predict, multithread, dim_red_only):
     pca_norm.fit(X_norm)  # Norm
     n_components_norm = pca_norm.explained_variance_ratio_.size
     for i in range(1, n_components_norm):
-        expl_var = pca_norm.explained_variance_ratio_.sum()
+        expl_var = pca_norm.explained_variance_ratio_[0:i+1].sum()
         if(expl_var > 0.9):
             n_components_norm = i
             pca_norm = PCA(n_components=n_components_norm)
@@ -175,7 +175,7 @@ def _testRegressors(spectra, to_predict, multithread, dim_red_only):
 
     # Plot resulting scores
     print("Plotting resuling scores of the RMSECV")
-    plt.figure(figsize=(16, 12))
+    plt.figure(figsize=(18, 12))
     for name, result in results.items():
         score_index = 0
         plt.bar(name, result[score_index])
@@ -278,7 +278,6 @@ def _testClassifiers(spectra, to_predict, multithread, dim_red_only, sam_sz):
     X_std = np.stack(spectra_std.loc[:, 'intensity'])
     X_pwr = np.stack(spectra_pwr.loc[:, 'intensity'])
     X_norm = np.stack(spectra_norm.loc[:, 'intensity'])
-    print("Shapes", X_orig.shape, X_std.shape, X_pwr.shape, X_norm.shape)
 
     # Perform dimensionality reduction
     print("Performing dimensionality reduction...")
@@ -286,7 +285,7 @@ def _testClassifiers(spectra, to_predict, multithread, dim_red_only, sam_sz):
     pca_std.fit(X_std)  # Std
     n_components_std = pca_std.explained_variance_ratio_.size
     for i in range(1, n_components_std):
-        expl_var = pca_std.explained_variance_ratio_.sum()
+        expl_var = pca_std.explained_variance_ratio_[0:i+1].sum()
         if(expl_var > 0.9):
             n_components_std = i
             pca_std = PCA(n_components=n_components_std)
@@ -297,7 +296,7 @@ def _testClassifiers(spectra, to_predict, multithread, dim_red_only, sam_sz):
     pca_pwr.fit(X_pwr)  # Pwr
     n_components_pwr = pca_pwr.explained_variance_ratio_.size
     for i in range(1, n_components_pwr):
-        expl_var = pca_pwr.explained_variance_ratio_.sum()
+        expl_var = pca_pwr.explained_variance_ratio_[0:i+1].sum()
         if(expl_var > 0.9):
             n_components_pwr = i
             pca_pwr = PCA(n_components=n_components_pwr)
@@ -309,7 +308,7 @@ def _testClassifiers(spectra, to_predict, multithread, dim_red_only, sam_sz):
     pca_norm.fit(X_norm)  # Norm
     n_components_norm = pca_norm.explained_variance_ratio_.size
     for i in range(1, n_components_norm):
-        expl_var = pca_norm.explained_variance_ratio_.sum()
+        expl_var = pca_norm.explained_variance_ratio_[0:i+1].sum()
         if(expl_var > 0.9):
             n_components_norm = i
             pca_norm = PCA(n_components=n_components_norm)
