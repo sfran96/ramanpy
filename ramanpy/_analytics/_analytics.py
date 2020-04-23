@@ -6,7 +6,7 @@ Created on Mon Apr 13 14:37:19 2020
 """
 from sklearn.preprocessing import StandardScaler, PowerTransformer, Normalizer
 from sklearn import svm
-from sklearn.cross_decomposition.pls_ import _PLS
+from sklearn.cross_decomposition.pls_ import PLSRegression
 import numpy as np
 from sklearn.tree import DecisionTreeClassifier, DecisionTreeRegressor
 from sklearn.neighbors import KNeighborsRegressor, KNeighborsClassifier
@@ -140,30 +140,38 @@ def _testRegressors(spectra, to_predict, multithread, dim_red_only):
     dtrees = DecisionTreeRegressor()
     knn = KNeighborsRegressor()
     svr = svm.SVR()
+    pls = PLSRegression()
     print("Testing regressors...")
     warnings.filterwarnings("ignore")
     results["DT_std_PCA"] = _doModelSelection(dtrees, spectra_std_pca, to_predict, multithread)
     results["KNN_std_PCA"] = _doModelSelection(knn, spectra_std_pca, to_predict, multithread)
     results["SVR_std_PCA"] = _doModelSelection(svr, spectra_std_pca, to_predict, multithread)
+    results["PLS_std_PCA"] = _doModelSelection(pls, spectra_std_pca, to_predict, multithread)
     results["DT_pwr_PCA"] = _doModelSelection(dtrees, spectra_pwr_pca, to_predict, multithread)
     results["KNN_pwr_PCA"] = _doModelSelection(knn, spectra_pwr_pca, to_predict, multithread)
     results["SVR_pwr_PCA"] = _doModelSelection(svr, spectra_pwr_pca, to_predict, multithread)
+    results["PLS_pwr_PCA"] = _doModelSelection(pls, spectra_pwr_pca, to_predict, multithread)
     results["DT_norm_PCA"] = _doModelSelection(dtrees, spectra_norm_pca, to_predict, multithread)
     results["KNN_norm_PCA"] = _doModelSelection(knn, spectra_norm_pca, to_predict, multithread)
     results["SVR_norm_PCA"] = _doModelSelection(svr, spectra_norm_pca, to_predict, multithread)
+    results["PLS_norm_PCA"] = _doModelSelection(pls, spectra_norm_pca, to_predict, multithread)
     if(not dim_red_only):
         results["DT"] = _doModelSelection(dtrees, X_orig, to_predict, multithread)
         results["KNN"] = _doModelSelection(knn, X_orig, to_predict, multithread)
         results["SVR"] = _doModelSelection(svr, X_orig, to_predict, multithread)
+        results["PLS"] = _doModelSelection(pls, X_orig, to_predict, multithread)
         results["DT_std"] = _doModelSelection(dtrees, X_std, to_predict, multithread)
         results["KNN_std"] = _doModelSelection(knn, X_std, to_predict, multithread)
         results["SVR_std"] = _doModelSelection(svr, X_std, to_predict, multithread)
+        results["PLS_std"] = _doModelSelection(pls, X_std, to_predict, multithread)
         results["DT_pwr"] = _doModelSelection(dtrees, X_pwr, to_predict, multithread)
         results["KNN_pwr"] = _doModelSelection(knn, X_pwr, to_predict, multithread)
         results["SVR_pwr"] = _doModelSelection(svr, X_pwr, to_predict, multithread)
+        results["PLS_pwr"] = _doModelSelection(pls, X_pwr, to_predict, multithread)
         results["DT_norm"] = _doModelSelection(dtrees, X_norm, to_predict, multithread)
         results["KNN_norm"] = _doModelSelection(knn, X_norm, to_predict, multithread)
         results["SVR_norm"] = _doModelSelection(svr, X_norm, to_predict, multithread)
+        results["PLS_norm"] = _doModelSelection(pls, X_norm, to_predict, multithread)
 
     # Plot resulting scores
     print("Plotting resuling scores of the RMSECV")
@@ -404,6 +412,14 @@ def _doModelSelection(estimator, X, Y, multithread):
                 'C': np.linspace(1, 1e8, 8, endpoint=True, dtype=np.int8),
                 'kernel': ['linear'],
                 'epsilon': np.linspace(0.1, 1.0, 10, endpoint=True)
+                }
+    elif(isinstance(estimator, PLSRegression)):
+        estimator = PLSRegression()
+        score_metrics = ["r2", "neg_mean_squared_error"]
+        refit = "neg_mean_squared_error"
+        params = {
+                'n_components': np.linspace(1, 5, 3, endpoint=True, dtype=np.int8),
+                'max_iter': np.linspace(500, 1000, 3, endpoint=True, dtype=np.int8)
                 }
     elif(isinstance(estimator, DecisionTreeClassifier)):
         estimator = DecisionTreeClassifier()
