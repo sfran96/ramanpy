@@ -105,6 +105,7 @@ def _testRegressors(spectra, to_predict, multithread, dim_red_only):
     n_components_std = pca_std.explained_variance_ratio_.size
     for i in range(1, n_components_std):
         expl_var = pca_std.explained_variance_ratio_[0:i+1].sum()
+        print(f"Explained variance with {i} components = {expl_var}")
         if(expl_var > 0.9):
             n_components_std = i
             pca_std = PCA(n_components=n_components_std)
@@ -116,6 +117,7 @@ def _testRegressors(spectra, to_predict, multithread, dim_red_only):
     n_components_pwr = pca_pwr.explained_variance_ratio_.size
     for i in range(1, n_components_pwr):
         expl_var = pca_pwr.explained_variance_ratio_[0:i+1].sum()
+        print(f"Explained variance with {i} components = {expl_var}")
         if(expl_var > 0.9):
             n_components_pwr = i
             pca_pwr = PCA(n_components=n_components_pwr)
@@ -128,6 +130,7 @@ def _testRegressors(spectra, to_predict, multithread, dim_red_only):
     n_components_norm = pca_norm.explained_variance_ratio_.size
     for i in range(1, n_components_norm):
         expl_var = pca_norm.explained_variance_ratio_[0:i+1].sum()
+        print(f"Explained variance with {i} components = {expl_var}")
         if(expl_var > 0.9):
             n_components_norm = i
             pca_norm = PCA(n_components=n_components_norm)
