@@ -7,6 +7,7 @@ Created on April 2020
 from __future__ import division, print_function
 __all__ = ['Spectra', 'readFile', 'readFiles']
 import pandas as pd
+from pandas import DataFrame
 from glob import glob as _glob
 from ._parsers import _readCSV, _readJCAMP, _readMATLAB, _readSPC, _setPreValues, _removePreValues
 from ._preprocessing import _removeBaseline, _smoothSignal, _removeBackground, _detectPeaks, _cutSpectrum, _removeSpikes
@@ -16,21 +17,18 @@ from datetime import datetime
 from pathlib import Path
 
 
-class Spectra(pd.DataFrame):
+class Spectra(DataFrame):
 
     _COLUMNS = ["wavenumbers", "intensity", "source"]
     _model = None
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(columns=self._COLUMNS, *args, **kwargs)
 
     @property
     def _constructor(self):
         return Spectra
 
-    @property
-    def _constructor_sliced(self):
-        return Spectra
+    def __init__(self, *args, **kwargs):
+        kwargs['columns'] = self._COLUMNS
+        super().__init__(*args, **kwargs)
 
     def addSpectrum(self, wavenumbers, intensity, source):
         self.loc[-1] = [wavenumbers, intensity, source]  # adding a row
