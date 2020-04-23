@@ -63,10 +63,10 @@ class Spectra(pd.DataFrame):
             return result
 
     def testRegressors(self, to_predict, multithread=False, dim_red_only=False):
-        self._model = _testRegressors(self, to_predict, multithread)
+        self._model = _testRegressors(self, to_predict, multithread, dim_red_only)
 
     def testClassifiers(self, to_predict, multithread=False, dim_red_only=False):
-        self._model = _testClassifiers(self, to_predict, multithread)
+        self._model = _testClassifiers(self, to_predict, multithread, dim_red_only)
 
     def saveModel(self, path="models"):
         if(not isinstance(self._model, type(None))):
