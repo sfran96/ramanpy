@@ -441,19 +441,45 @@ def _doModelSelection(estimator, X, Y, multithread):
 
 
 def _trainModel(spectra, to_predict):
+    # Obtain information from model structure
     model = spectra._model[1]
     model_info = spectra._model[2]
     data = np.stack(spectra.loc[:, 'intensity'])
-    if("PCA" in model_info["name"]):
-        pca = model_info["pca"]
-        data = pca.transform(data)
+    
+    # Process data accordingly, first split
     X, X_test, Y, Y_test = train_test_split(data, to_predict, test_size=0.15,
                                             shuffle=True, random_state=7)
+    
+    # Scale if in model
+    if("std_PCA" in model_info["name"]):
+        scaler = StandardScaler()
+        X = scaler.fit_transform(X)
+        X_test = scaler.fit_transform(X_test)
+        pca = model_info["pca"]
+        data = pca.transform(data)
+    elif("pwr_PCA" in model_info["name"]):
+        scaler = PowerTransformer()
+        X = scaler.fit_transform(X)
+        X_test = scaler.fit_transform(X_test)
+        pca = model_info["pca"]
+        data = pca.transform(data)
+    elif("norm_PCA" in model_info["name"]):
+        scaler = Normalizer()
+        X = scaler.fit_transform(X)
+        X_test = scaler.fit_transform(X_test)
+        pca = model_info["pca"]
+        data = pca.transform(data)
+    
+    # Fit to model    
     model.fit(X, Y)
+
+    # Predict train and test sets
+    Y_train_pred = model.predict(X)
+    Y_test_pred = model.predict(X_test)
     return {"Y_train": Y,
             "Y_test": Y_test,
-            "Y_test_pred": model.predict(X_test),
-            "Y_train_pred": model.predict(X)}
+            "Y_test_pred": Y_test_pred,
+            "Y_train_pred": Y_train_pred}
 
 
 def _predict(spectra, index):
@@ -467,7 +493,23 @@ def _predict(spectra, index):
     elif(isinstance(index, int)):
         data = np.stack(spectra.loc[index, 'intensity'].copy()).reshape(1, -1)
 
-    if("PCA" in model_info["name"]):
+    # Scale if in model
+    if("std_PCA" in model_info["name"]):
+        scaler = StandardScaler()
+        X = scaler.fit_transform(X)
+        X_test = scaler.fit_transform(X_test)
+        pca = model_info["pca"]
+        data = pca.transform(data)
+    elif("pwr_PCA" in model_info["name"]):
+        scaler = PowerTransformer()
+        X = scaler.fit_transform(X)
+        X_test = scaler.fit_transform(X_test)
+        pca = model_info["pca"]
+        data = pca.transform(data)
+    elif("norm_PCA" in model_info["name"]):
+        scaler = Normalizer()
+        X = scaler.fit_transform(X)
+        X_test = scaler.fit_transform(X_test)
         pca = model_info["pca"]
         data = pca.transform(data)
 
