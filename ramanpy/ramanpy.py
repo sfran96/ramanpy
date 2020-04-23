@@ -29,9 +29,9 @@ class Spectra(pd.DataFrame):
         return Spectra
 
     def addSpectrum(self, wavenumbers, intensity, source):
-        a_row = pd.Series([wavenumbers, intensity, source])
-        row_df = pd.DataFrame([a_row], columns=self._COLUMNS)
-        self = self.append(row_df, ignore_index=True)
+        self.loc[-1] = [wavenumbers, intensity, source]  # adding a row
+        self.index = self.index + 1  # shifting index
+        self.sort_index(inplace=True) 
 
     def removeBaseline(self, roi, method, index=-1, inPlace=False, **kwargs):
         result = _removeBaseline(self, roi, method, index, inPlace, **kwargs)
