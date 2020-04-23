@@ -167,6 +167,7 @@ def _testRegressors(spectra, to_predict, multithread, dim_red_only):
 
     # Plot resulting scores
     print("Plotting resuling scores of the RMSECV")
+    plt.figure(fig_size=(16, 12))
     for name, result in results.items():
         score_index = 0
         plt.bar(name, result[score_index])
@@ -174,7 +175,7 @@ def _testRegressors(spectra, to_predict, multithread, dim_red_only):
     plt.ylabel("Score (RMSECV)")
     plt.show()
     # Evaluate all regresors
-    chosen_reg = results["DT"]
+    chosen_reg = results["DT_std_PCA"]
     for name, result in results.items():
         if(abs(result[0]) < abs(chosen_reg[0])):
             if("std_PCA" in name):
@@ -339,7 +340,7 @@ def _testClassifiers(spectra, to_predict, multithread, dim_red_only, sam_sz):
         results["KNN_norm"] = _doModelSelection(knn, X_norm, to_predict, multithread)
 
     # Evaluate all classifiers
-    chosen_clf = results["DT"]
+    chosen_clf = results["DT_std_PCA"]
     for name, result in results.items():
         if(abs(result[0]) > abs(chosen_clf[0])):
             if("std_PCA" in name):

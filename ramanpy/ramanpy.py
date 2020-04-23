@@ -28,10 +28,14 @@ class Spectra(pd.DataFrame):
     def _constructor(self):
         return Spectra
 
+    @property
+    def _constructor_sliced(self):
+        return Spectra
+
     def addSpectrum(self, wavenumbers, intensity, source):
         self.loc[-1] = [wavenumbers, intensity, source]  # adding a row
         self.index = self.index + 1  # shifting index
-        self.sort_index(inplace=True) 
+        self.sort_index(inplace=True)
 
     def removeBaseline(self, roi, method, index=-1, inPlace=False, **kwargs):
         result = _removeBaseline(self, roi, method, index, inPlace, **kwargs)
