@@ -167,7 +167,7 @@ def _testRegressors(spectra, to_predict, multithread, dim_red_only):
 
     # Plot resulting scores
     print("Plotting resuling scores of the RMSECV")
-    plt.figure(fig_size=(16, 12))
+    plt.figure(figsize=(16, 12))
     for name, result in results.items():
         score_index = 0
         plt.bar(name, result[score_index])
