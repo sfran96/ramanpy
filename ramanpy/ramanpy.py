@@ -31,8 +31,10 @@ class Spectra(DataFrame):
         super().__init__(*args, **kwargs)
 
     def addSpectrum(self, wavenumbers, intensity, source):
-        self.loc[-1] = [wavenumbers, intensity, source]  # adding a row
-        self.index = self.index + 1  # shifting index
+        if(len(self.index) == 0):
+            self.at[0] = [wavenumbers, intensity, source]  # adding a row
+        else:
+            self.at[self.index.max() + 1] = [wavenumbers, intensity, source]  # adding a row
         self.sort_index(inplace=True)
 
     def removeBaseline(self, roi, method, index=-1, inPlace=False, **kwargs):
