@@ -51,28 +51,22 @@ def _removeBaseline(spectra, roi, method, index=-1, inPlace=False, **kwargs):
 
     if(index == -1):  # All signals
         for i in spectra_c.index:
-            new_sig, __ = rp.baseline(spectra_c.loc[i, "wavenumbers"],
-                                      spectra_c.loc[i, "intensity"], roi,
+            new_sig, __ = rp.baseline(spectra_c.wavenumbers,
+                                      spectra_c.intensity[i], roi,
                                       method, **kwargs)
-#            if(new_sig.min() < 0):
-#                new_sig -= new_sig.min()
-            spectra_c.at[i, 'intensity'] = new_sig.reshape(-1,)
+            spectra_c.intensity[i] = new_sig.reshape(-1,)
     else:
         if(isinstance(index, tuple)):  # Multiple signals
             for i in index:
-                new_sig, __ = rp.baseline(spectra_c.loc[i, "wavenumbers"],
-                                          spectra_c.loc[i, "intensity"], roi,
+                new_sig, __ = rp.baseline(spectra_c.wavenumbers,
+                                          spectra_c.intensity[i], roi,
                                           method, **kwargs)
-#                if(new_sig.min() < 0):
-#                    new_sig -= new_sig.min()
-                spectra_c.at[i, 'intensity'] = new_sig.reshape(-1,)
+                spectra_c.intensity[i] = new_sig.reshape(-1,)
         elif(isinstance(index, int)):  # Only 1 signal
-            new_sig, __ = rp.baseline(spectra_c.loc[index, "wavenumbers"],
-                                      spectra_c.loc[index, "intensity"], roi,
+            new_sig, __ = rp.baseline(spectra_c.wavenumbers,
+                                      spectra_c.intensity[index], roi,
                                       method, **kwargs)
-#            if(new_sig.min() < 0):
-#                new_sig -= new_sig.min()
-            spectra_c.at[index, 'intensity'] = new_sig.reshape(-1,)
+            spectra_c.intensity[index] = new_sig.reshape(-1,)
 
     if not inPlace:
         return spectra_c
@@ -87,22 +81,22 @@ def _smoothSignal(spectra, index=-1, method="flat", inPlace=False,
 
     if(index == -1):  # All signals
         for i in spectra_c.index:
-            new_sig = rp.smooth(spectra_c.loc[i, "wavenumbers"],
-                                spectra_c.loc[i, "intensity"],
+            new_sig = rp.smooth(spectra_c.wavenumbers,
+                                spectra_c.intensity[i],
                                 method, **kwargs)
-            spectra_c[i, 'intensity'] = new_sig[0]
+            spectra_c.intensity[i] = new_sig
     else:
         if(isinstance(index, tuple)):  # Multiple signals
             for i in index:
-                new_sig = rp.smooth(spectra_c.loc[i, "wavenumbers"],
-                                    spectra_c.loc[i, "intensity"],
+                new_sig = rp.smooth(spectra_c.wavenumbers,
+                                    spectra_c.intensity[i],
                                     method, **kwargs)
-                spectra_c[i, 'intensity'] = new_sig[0]
+                spectra_c.intensity[i] = new_sig
         elif(isinstance(index, int)):  # Only 1 signal
-            new_sig = rp.smooth(spectra_c.loc[index, "wavenumbers"],
-                                spectra_c.loc[index, "intensity"],
+            new_sig = rp.smooth(spectra_c.wavenumbers,
+                                spectra_c.intensity[index],
                                 method, **kwargs)
-            spectra_c[index, 'intensity'] = new_sig[0]
+            spectra_c.intensity[index] = new_sig
 
     if not inPlace:
         return spectra_c

@@ -7,8 +7,10 @@ Created on April 2020
 from __future__ import division, print_function
 __all__ = ['Spectra', 'readFile', 'readFiles']
 import pandas as pd
+import matplotlib.pyplot as plt
 from pandas import DataFrame
 from glob import glob as _glob
+import numpy as np
 from ._parsers import _readCSV, _readJCAMP, _readMATLAB, _readSPC, _setPreValues, _removePreValues
 from ._preprocessing import _removeBaseline, _smoothSignal, _removeBackground, _detectPeaks, _cutSpectrum, _removeSpikes
 from ._analytics import _testClassifiers, _testRegressors, _trainModel, _predict
@@ -19,22 +21,33 @@ from pathlib import Path
 
 class Spectra(DataFrame):
 
-    _COLUMNS = ["wavenumbers", "intensity", "source"]
-    _model = None
-
     @property
     def _constructor(self):
         return Spectra
 
     def __init__(self, *args, **kwargs):
-        kwargs['columns'] = self._COLUMNS
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)        
+        self._model = None
+        if("max_decimals" in kwargs):
+            self._max_decimals = kwargs["max_decimals"]
+            del(kwargs["max_decimals"])
+        else:
+            self._max_decimals = 1
+
+    @property
+    def wavenumbers(self):
+        return self.columns.values.astype(np.float)
+
+    @property
+    def intensity(self):
+        return self.values
 
     def addSpectrum(self, wavenumbers, intensity, source):
         if(len(self.index) == 0):
-            self.at[0] = [wavenumbers, intensity, source]  # adding a row
+            self.__dict__.update(pd.DataFrame(columns=np.round(wavenumbers, self._max_decimals).astype("str")).__dict__)
+            self.at[0] = intensity  # adding a row
         else:
-            self.at[self.index.max() + 1] = [wavenumbers, intensity, source]  # adding a row
+            self.at[self.index.max() + 1] = intensity  # adding a row
         self.sort_index(inplace=True)
 
     def removeBaseline(self, roi, method, index=-1, inPlace=False, **kwargs):
@@ -55,6 +68,17 @@ class Spectra(DataFrame):
         result = _cutSpectrum(self, roi, index, inPlace)
         if(not inPlace):
             return result
+
+    def plotSignal(self, index=0, figsize=(15,10)):
+        plt.figure(figsize=figsize)
+        ax = plt.gca()
+        plt.plot(self.wavenumbers, self.intensity[index])
+        plt.title(f"Raman signal for sample {index}")
+        plt.xlabel("Raman shift")
+        plt.ylabel("Intensity")
+        plt.xlim(self.wavenumbers.min(), self.wavenumbers.max())
+        plt.ylim(self.intensity[index].min(), self.intensity[index].max())
+        return ax
 
     def removeBackground(self, index_baseline, index=-1, inPlace=False):
         result = _removeBackground(self, index_baseline, index, inPlace)
