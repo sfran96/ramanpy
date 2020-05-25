@@ -6,4 +6,4 @@ Created on Fri Apr  3 16:48:02 2020
 """
 
 from ._preprocessing import _removeBaseline, _smoothSignal, _detectPeaks
-from ._preprocessing import _cutSpectrum, _removeBackground, _removeSpikes
+from ._preprocessing import _cutSpectrum, _removeBackground, _removeSpikes, _classDifferences

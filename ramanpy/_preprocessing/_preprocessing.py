@@ -9,6 +9,7 @@ import numpy as np
 from scipy.signal import find_peaks, peak_widths, medfilt
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
+from scipy.stats import mode
 
 
 # 1 Gaussian form
@@ -84,19 +85,19 @@ def _smoothSignal(spectra, index=-1, method="flat", inPlace=False,
             new_sig = rp.smooth(spectra_c.wavenumbers,
                                 spectra_c.intensity[i],
                                 method, **kwargs)
-            spectra_c.intensity[i] = new_sig
+            spectra_c.intensity[i] = new_sig[:len(spectra_c.wavenumbers)]
     else:
         if(isinstance(index, tuple)):  # Multiple signals
             for i in index:
                 new_sig = rp.smooth(spectra_c.wavenumbers,
                                     spectra_c.intensity[i],
                                     method, **kwargs)
-                spectra_c.intensity[i] = new_sig
+                spectra_c.intensity[i] = new_sig[:len(spectra_c.wavenumbers)]
         elif(isinstance(index, int)):  # Only 1 signal
             new_sig = rp.smooth(spectra_c.wavenumbers,
                                 spectra_c.intensity[index],
                                 method, **kwargs)
-            spectra_c.intensity[index] = new_sig
+            spectra_c.intensity[index] = new_sig[:len(spectra_c.wavenumbers)]
 
     if not inPlace:
         return spectra_c
@@ -104,19 +105,19 @@ def _smoothSignal(spectra, index=-1, method="flat", inPlace=False,
 
 def _detectPeaks(spectra, index=0, do_plot=True):
     # Obtain the full signals in a way they can be accessed more easily later
-    x = spectra.loc[index].wavenumbers
-    y = spectra.loc[index].intensity
+    x = spectra.wavenumbers
+    y = spectra.intensity[index]
 
     # Find peaks and information related to it (width, floor, start and end)
-    peaks, __ = find_peaks(y, prominence=y.mean()/(x.size/100))
-    peak_widths_info = peak_widths(y, peaks, rel_height=1)
+    peaks, __ = find_peaks(y, prominence=y.mean()/(x.size/5000))
+    peak_widths_info = peak_widths(y, peaks, rel_height=0.5)
     widths = peak_widths_info[0]
     widths_pos_init = peak_widths_info[2]
     widths_pos_end = peak_widths_info[3]
-
     if(do_plot):
-        plt.figure(figsize=(16, 16))
+        plt.figure(figsize=(15, 8))
         plt.plot(x, y, linewidth=2)
+        plt.xlim([x.min(), x.max()])
 
     # For every peak with these functions
     funcs = (_1gaussian, _1lorentzian)
@@ -125,7 +126,7 @@ def _detectPeaks(spectra, index=0, do_plot=True):
         peak = peaks[i]
         initial_fitting = np.array([y[peak], x[peak], widths[i]])
 
-        if x[int(widths_pos_init[i]):int(widths_pos_end[i])].size < 3:
+        if x[int(widths_pos_init[i]):int(widths_pos_end[i])].size < 3: # Checking that the peak is not just two adjacent points
             continue
         try:
             for func in funcs:
@@ -145,43 +146,34 @@ def _detectPeaks(spectra, index=0, do_plot=True):
         # Check that width and peak are respected with a tolerance of 10%
         res_func = func(x, result[0][0], result[0][1], result[0][2])
         if(do_plot):
-            plt.plot(x[peak], y[peak], "*", color="orange")
-#            plt.plot(x, res_func, linestyle=":")
+            plt.plot(x[peak], y[peak], "o", color="orange", label="Peak position @ {}".format(peak))
+            plt.plot(x, res_func, linestyle="--")
+            plt.title("Peak fitting on Raman spectra for sample {}".format(index))
+            plt.xlabel("Raman shift")
+            plt.ylabel("Intensity")
 
 
-def _cutSpectrum(spectra, roi, index=-1, inPlace=False):
-    if inPlace:
-        spectra_c = spectra
-    else:
-        spectra_c = spectra.copy()
+def _cutSpectrum(spectra, roi, index=-1):
+    spectra_c = spectra.__class__()
+
+    index_strt = np.abs(spectra.wavenumbers-roi[0]).argmin()
+    index_end = np.abs(spectra.wavenumbers-roi[1]).argmin()
+    new_wvnmbr = spectra.wavenumbers[index_strt:index_end]
 
     if(index == -1):  # All signals
-        for i in spectra_c.index:
-            index_strt = np.abs(spectra.loc[i].wavenumbers-roi[0]).argmin()
-            index_end = np.abs(spectra.loc[i].wavenumbers-roi[1]).argmin()
-            new_sig = spectra_c.loc[i].intensity[index_strt:index_end]
-            new_wvnmbr = spectra_c.loc[i].wavenumbers[index_strt:index_end]
-            spectra_c.at[i, 'intensity'] = new_sig
-            spectra_c.at[i, 'wavenumbers'] = new_wvnmbr
+        for i in spectra.index:
+            new_sig = spectra.intensity[i][index_strt:index_end]
+            spectra_c.addSpectrum(new_wvnmbr, new_sig)
     else:
         if(isinstance(index, tuple)):  # Multiple signals
             for i in index:
-                index_strt = np.abs(spectra.loc[i].wavenumbers-roi[0]).argmin()
-                index_end = np.abs(spectra.loc[i].wavenumbers-roi[1]).argmin()
-                new_sig = spectra_c.loc[i].intensity[index_strt:index_end]
-                new_wvnmbr = spectra_c.loc[i].wavenumbers[index_strt:index_end]
-                spectra_c.at[i, 'intensity'] = new_sig
-                spectra_c.at[i, 'wavenumbers'] = new_wvnmbr
+                new_sig = spectra.intensity[i][index_strt:index_end]
+                spectra_c.addSpectrum(new_wvnmbr, new_sig)
         elif(isinstance(index, int)):  # Only 1 signal
-            index_strt = np.abs(spectra.loc[index].wavenumbers-roi[0]).argmin()
-            index_end = np.abs(spectra.loc[index].wavenumbers-roi[1]).argmin()
-            new_sig = spectra_c.loc[index].intensity[index_strt:index_end]
-            new_wvnmbr = spectra_c.loc[index].wavenumbers[index_strt:index_end]
-            spectra_c.at[index, 'intensity'] = new_sig
-            spectra_c.at[index, 'wavenumbers'] = new_wvnmbr
+                new_sig = spectra.intensity[index][index_strt:index_end]
+                spectra_c.addSpectrum(new_wvnmbr, new_sig)
 
-    if not inPlace:
-        return spectra_c
+    return spectra_c
 
 
 def _removeBackground(spectra, index_baseline, index=-1, inPlace=False):
@@ -232,3 +224,31 @@ def _removeSpikes(spectra, index=-1, inPlace=False, **kwargs):
 
     if not inPlace:
         return spectra_c
+
+def _classDifferences(spectra, to_predict):
+    plt.figure(figsize=(14,20))
+    ax1 = plt.subplot(311)
+    classes = np.unique(to_predict)
+    for clss in classes:
+        ax1.plot(spectra.wavenumbers, mode(spectra.intensity[(to_predict == clss).reshape(-1)]).mode[0], label=clss)
+    ax1.set_title("Mode of the Raman spectra")
+    ax1.set_xlabel("Raman shift")
+    ax1.set_ylabel("Intensity")
+    ax1.set_xlim([spectra.wavenumbers.min(), spectra.wavenumbers.max()])
+    ax1.legend()
+    ax2 = plt.subplot(312)
+    for clss in classes:
+        ax2.plot(spectra.wavenumbers, np.mean(spectra.intensity[(to_predict == clss).reshape(-1)], axis=0), label=clss)
+    ax2.set_title("Mean of the Raman spectra")
+    ax2.set_xlabel("Raman shift")
+    ax2.set_ylabel("Intensity")
+    ax2.set_xlim([spectra.wavenumbers.min(), spectra.wavenumbers.max()])
+    ax2.legend()
+    ax3 = plt.subplot(313)
+    for clss in classes:
+        ax3.plot(spectra.wavenumbers, spectra.intensity[(to_predict == clss).reshape(-1)].astype(np.float64).std(axis=0), label=clss)
+    ax3.set_title("Std. Dev. of the Raman spectra")
+    ax3.set_xlabel("Raman shift")
+    ax3.set_ylabel("Intensity")
+    ax3.set_xlim([spectra.wavenumbers.min(), spectra.wavenumbers.max()])
+    ax3.legend()

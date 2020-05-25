@@ -12,7 +12,7 @@ from pandas import DataFrame
 from glob import glob as _glob
 import numpy as np
 from ._parsers import _readCSV, _readJCAMP, _readMATLAB, _readSPC, _setPreValues, _removePreValues
-from ._preprocessing import _removeBaseline, _smoothSignal, _removeBackground, _detectPeaks, _cutSpectrum, _removeSpikes
+from ._preprocessing import _removeBaseline, _smoothSignal, _removeBackground, _detectPeaks, _cutSpectrum, _removeSpikes, _classDifferences
 from ._analytics import _testClassifiers, _testRegressors, _trainModel, _predict
 import pickle
 from datetime import datetime
@@ -42,7 +42,7 @@ class Spectra(DataFrame):
     def intensity(self):
         return self.values
 
-    def addSpectrum(self, wavenumbers, intensity, source):
+    def addSpectrum(self, wavenumbers, intensity):
         if(len(self.index) == 0):
             self.__dict__.update(pd.DataFrame(columns=np.round(wavenumbers, self._max_decimals).astype("str")).__dict__)
             self.at[0] = intensity  # adding a row
@@ -64,10 +64,9 @@ class Spectra(DataFrame):
     def detectPeaks(self, index=0, do_plot=True):
         _detectPeaks(self, index, do_plot)
 
-    def cutSpectrum(self, roi, index=-1, inPlace=False):
-        result = _cutSpectrum(self, roi, index, inPlace)
-        if(not inPlace):
-            return result
+    def cutSpectrum(self, roi, index=-1):
+        result = _cutSpectrum(self, roi, index)
+        return result
 
     def plotSignal(self, index=0, figsize=(15,10)):
         plt.figure(figsize=figsize)
@@ -90,11 +89,11 @@ class Spectra(DataFrame):
         if(not inPlace):
             return result
 
-    def testRegressors(self, to_predict, multithread=False, dim_red_only=False):
-        self._model = _testRegressors(self, to_predict, multithread, dim_red_only)
+    def testRegressors(self, to_predict, multithread=False, **kwargs):
+        self._model = _testRegressors(self, to_predict, multithread, **kwargs)
 
-    def testClassifiers(self, to_predict, multithread=False, dim_red_only=False):
-        self._model = _testClassifiers(self, to_predict, multithread, dim_red_only)
+    def testClassifiers(self, to_predict, multithread=False, **kwargs):
+        self._model = _testClassifiers(self, to_predict, multithread, **kwargs)
 
     def saveModel(self, path="models"):
         if(not isinstance(self._model, type(None))):
@@ -114,11 +113,14 @@ class Spectra(DataFrame):
         else:
             raise AttributeError("The 'path_to_file' attribute must be of format *.pkl")
 
-    def trainModel(self, to_predict):
-        return _trainModel(self, to_predict)
+    def trainModel(self, to_predict, show_graph=False, cv = 10):
+        return _trainModel(self, to_predict, show_graph, cv)
 
     def predictFromModel(self, index=0):
         return _predict(self, index)
+
+    def classDifferences(self, to_predict):
+        _classDifferences(self, to_predict)
 
 
 def readFile(path, spectra, with_to_predict=False, **kwargs):
@@ -126,7 +128,7 @@ def readFile(path, spectra, with_to_predict=False, **kwargs):
 
     # Comma-separeted-values file format
     if path.endswith(".csv") or path.endswith(".txt"):
-        _readCSV(path, spectra, **kwargs)
+        return _readCSV(path, spectra, with_to_predict, **kwargs)
     # SPC file format
     elif path.endswith(".spc"):
         _readSPC(path, spectra, **kwargs)

@@ -62,7 +62,7 @@ def _readCSV(path, spectra, with_to_predict=False, **kwargs):
             table_columns.field_names = samples.columns
         print(table_columns)
         # Do-while the answer is correct
-        inp = input("Are the X values distributed in multiple columns? Yes/No [Yes]: ") or "Yes"  
+        inp = input("Are the X values distributed in multiple columns? Yes/No [Yes]: ") or "yes"  
         while not finished:
             if(inp.lower() == "yes"):
                 multicolumn = True
@@ -76,10 +76,19 @@ def _readCSV(path, spectra, with_to_predict=False, **kwargs):
                 while not finished:
                     if(inp in samples.columns):
                         index2 = inp
-                        finished = True
                         break
-                    inp = input("End column of X values? ")
-                pass
+                    inp = input("End column of X values? ")     
+                if(with_to_predict):           
+                    inp = input("Name of column containing the to-predict values: ")
+                    while(not finished):  # If there's more than one value ask for a specific one:
+                        if(inp in samples.columns):
+                            index3 = np.where(samples.columns == inp)[0]
+                            to_predict = samples.iloc[:, index3].to_numpy()
+                            finished = True
+                            break
+                        inp = input("Try again: ")
+                else:
+                    finished = True
             elif(inp.lower() == "no"):
                 inp = input("Column that contains the wavenumbers? ")
                 while not finished:
@@ -93,32 +102,36 @@ def _readCSV(path, spectra, with_to_predict=False, **kwargs):
                         index2 = inp
                         break
                     inp = input("Column that contains the intensities? ")
-            else:
-                inp = input("Are the X values distributed in multiple columns? Yes/No [No]: ")
-                
-        if(with_to_predict):
-            inp = input("Name of column containing the to-predict values: ")
-            while(not finished):  # If there's more than one value ask for a specific one:
-                if(inp in samples.columns):
-                    index3 = np.where(samples.columns == inp)
-                    to_predict = samples.loc[:, index3].to_numpy()
+                if(with_to_predict):
+                    inp = input("Name of column containing the to-predict values: ")
+                    while(not finished):  # If there's more than one value ask for a specific one:
+                        if(inp in samples.columns):
+                            index3 = np.where(samples.columns == inp)[0]
+                            to_predict = samples.iloc[:, index3].to_numpy()
+                            finished = True
+                            break
+                        inp = input("Try again: ")
+                else:
                     finished = True
-                    break
-                inp = input("Try again: ")
-        else:
-            finished = True
+            else:
+                inp = input("Are the X values distributed in multiple columns? Yes/No [Yes]: ") or "yes"
 
     # If the wavenumbers are distributed in columns
     if multicolumn:
-        wvnmbrs = samples.loc[:, index1:index2].columns.to_numpy() if not isinstance(samples.loc[:, index1:index2].columns.to_numpy()[0], str) else np.array(range(0, len(samples.loc[:, index1:index2].columns.to_numpy())))
+        # Convert to float if possible, in the except just make sure the variable columns is defined
+        try:
+            columns = samples.loc[:, index1:index2].columns.to_numpy().astype(np.float64)
+        except:
+            columns = samples.loc[:, index1:index2].columns.to_numpy()
+        wvnmbrs =  columns if (_isNumber(columns[0]) and _isNumber(columns[-1])) else np.array(range(0, len(samples.loc[:, index1:index2].columns.to_numpy())))  # Check first and last items are numeric
         intensities = samples.loc[:, index1:index2].to_numpy()
         for intensity in intensities:
-            spectra.addSpectrum(wvnmbrs, intensity, path)
+            spectra.addSpectrum(wvnmbrs, intensity)
 
     else:
         wvnmbrs = samples.loc[:, index1].to_numpy()
         intensities = samples.loc[:, index2].to_numpy()
-        spectra.addSpectrum(wvnmbrs, intensities, path)
+        spectra.addSpectrum(wvnmbrs, intensities)
 
     if(config._set_values):
         config._index1 = index1
@@ -188,7 +201,7 @@ def _readMATLAB(path, spectra, with_to_predict=False, **kwargs):
         intensity = row[index1[0][0]:index2[0][0]]
         if(flipped):
             intensity = np.flip(intensity)
-        spectra.addSpectrum(wvnmbrs, intensity, path)
+        spectra.addSpectrum(wvnmbrs, intensity)
 
     if(config._set_values):
         config._index1 = index1
@@ -211,7 +224,7 @@ def _readSPC(path, spectra, **kwargs):
     wvnmbrs = spc_file.x
     # Append the new spectrum/spectra
     for signal in spc_file.sub:
-        spectra.addSpectrum(wvnmbrs, signal.y, path)
+        spectra.addSpectrum(wvnmbrs, signal.y)
 
 
 def _readJCAMP(path, spectra, **kwargs):
@@ -224,9 +237,17 @@ def _readJCAMP(path, spectra, **kwargs):
 
     if(first_reader):
         if file.size == 1:
-            spectra.addSpectrum(file[0]['x'], file[0]['y'], path)
+            spectra.addSpectrum(file[0]['x'], file[0]['y'])
         elif file.size > 1:
             for spectrum in file:
-                spectra.addSpectrum(spectrum['x'], spectrum['y'], path)
+                spectra.addSpectrum(spectrum['x'], spectrum['y'])
     else:
-        spectra.addSpectrum(file['x'], file['y'], path)
+        spectra.addSpectrum(file['x'], file['y'])
+
+
+def _isNumber(string):
+    try:
+        float(string)
+        return True
+    except ValueError:
+        return False

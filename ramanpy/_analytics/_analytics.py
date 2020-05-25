@@ -4,34 +4,44 @@ Created on Mon Apr 13 14:37:19 2020
 
 @author: Francis Santos
 """
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
-from sklearn import svm
-from sklearn.cross_decomposition.pls_ import _PLS
 import numpy as np
-from sklearn.linear_model import Ridge
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.model_selection import train_test_split, RandomizedSearchCV, \
-                                    learning_curve, validation_curve, \
-                                    GridSearchCV
-from sklearn.decomposition import PCA
 import warnings
 import matplotlib.pyplot as plt
 import math
 from pandas import DataFrame
+from sklearn import svm
+from sklearn.preprocessing import MinMaxScaler, StandardScaler, LabelEncoder, OneHotEncoder, Normalizer, label_binarize
+from sklearn.cross_decomposition.pls_ import _PLS
+from sklearn.linear_model import Ridge
+from sklearn.svm import LinearSVC
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.model_selection import train_test_split, GridSearchCV, KFold
+from sklearn.metrics import mean_squared_error, roc_curve, auc, confusion_matrix, precision_score, recall_score, f1_score, accuracy_score
+from sklearn.pipeline import Pipeline
+from sklearn.base import TransformerMixin
+from scipy.stats import linregress
+from seaborn import heatmap
 
 
 class PLSReg(_PLS):
-    def __init__(self, n_components=2, *, scale=True,
-                 max_iter=500, tol=1e-06, copy=True, algorithm="svd"):
+    def __init__(self, n_components=2, *, scale=False,
+                 max_iter=500, tol=1e-06, copy=True, algorithm="nipals"):
         super().__init__(
             n_components=n_components, scale=scale,
             deflation_mode="regression", mode="A",
             norm_y_weights=False, max_iter=max_iter, tol=tol,
             copy=copy, algorithm=algorithm)
 
+class ModifiedLabelEncoder(LabelEncoder):  # https://stackoverflow.com/questions/48929124/scikit-learn-how-to-compose-labelencoder-and-onehotencoder-with-a-pipeline
 
-def _testRegressors(spectra, to_predict, multithread, dim_red_only):
+    def fit_transform(self, y, *args, **kwargs):
+        return super().fit_transform(y).reshape(-1, 1)
+
+    def transform(self, y, *args, **kwargs):
+        return super().transform(y).reshape(-1, 1)
+
+
+def _testRegressors(spectra, to_predict, multithread, **kwargs):
     '''
 
     Test multiple regressors (Support Vector Machines, Decision Tree,
@@ -83,238 +93,233 @@ def _testRegressors(spectra, to_predict, multithread, dim_red_only):
                          ({spectra.shape[0]}) and ({to_predict.shape[0]}) \
                          don't match.")
 
-    # Results dictionary
-    results = {}
-
-    # Perform scaling
-    print("Performing scaling...")
-    spectra_minmax = spectra.copy()
-    minmax = MinMaxScaler()
-    minmax.fit(spectra_minmax.intensity.tolist())
-    spectra_minmax.intensity[:] = minmax.fit_transform(spectra_minmax.intensity)
-    # for i in spectra.index:
-    #     new_sig = minmax.transform(spectra_minmax.intensity[i].reshape(1,-1))
-    #     spectra_minmax.intensity[i] = new_sig[0]
-
-    # Stack data in order to comply with scikit inputs
-    X = np.stack(spectra_minmax.intensity)
-
-    # Perform dimensionality reduction
-    print("Performing dimensionality reduction...")
-    pca_minmax = PCA()
-    pca_minmax.fit(X)  # Norm
-    n_components_minmax = pca_minmax.explained_variance_ratio_.size
-    for i in range(1, n_components_minmax):
-        expl_var = pca_minmax.explained_variance_ratio_[0:i+1].sum()
-        if(expl_var > 0.95):
-            n_components_minmax = i
-            pca_minmax = PCA(n_components=n_components_minmax)
-            pca_minmax.fit(X)
-            break
-    spectra_minmax_pca = pca_minmax.transform(X)
-
-    # Create regressors
-    print("Creating regressors...")
-    rdg = Ridge()
-    pls = PLSReg()
-    svr = svm.LinearSVR()
-    print("Testing regressors...")
-    warnings.filterwarnings("ignore")
-
-    results["RDG_minmax_PCA"] = _doModelSelection(rdg, spectra_minmax_pca, to_predict, multithread)
-    results["SVR_minmax_PCA"] = _doModelSelection(svr, spectra_minmax_pca, to_predict, multithread)
-    results["PLS_minmax_PCA"] = _doModelSelection(pls, spectra_minmax_pca, to_predict, multithread)
-    if(not dim_red_only):
-        results["RDG_minmax"] = _doModelSelection(rdg, X, to_predict, multithread)
-        results["PLS_minmax"] = _doModelSelection(pls, X, to_predict, multithread)
-        results["SVR_minmax"] = _doModelSelection(svr, X, to_predict, multithread)
-
-    # Plot resulting scores
-    print("Plotting resuling scores of the RMSECV")
-    plt.figure(figsize=(18, 12))
-    for name, result in results.items():
-        score_index = 0
-        plt.bar(name, math.sqrt(abs(result[score_index])))
-    plt.xlabel("Model")
-    plt.ylabel("Score (RMSECV)")
-    plt.show()
-    # Evaluate all regresors
-    typ = "regressor"
-    first = True
-    for name, result in results.items():
-        # Check PCA
-        if("minmax_PCA" in name):
-            pca = pca_minmax
-        else:
-            pca = None
-        # Fill variable first if not set
-        if(first):
-            chosen_reg = (result[0], result[1], {"name": name, "pca": pca, "type": typ})
-            first = False
-            continue
-        # Compare
-        if(abs(result[0]) < abs(chosen_reg[0])):
-            chosen_reg = (result[0], result[1], {"name": name, "pca": pca, "type": typ})
-
-    # Return model of best regressor with the results
-    return chosen_reg
-
-
-def _testClassifiers(spectra, to_predict, multithread, dim_red_only):
-    pass
-
-
-def _doModelSelection(estimator, X, Y, multithread):
-    n_jobs = -1 if(multithread) else None
-    print("Evaluating...")
-    if(isinstance(estimator, Ridge)):
-        estimator = Ridge()
-        score_metrics = ["r2", "neg_mean_squared_error"]
-        refit = "neg_mean_squared_error"
-        params = {
-                'alpha': np.logspace(-1, 4, 50)
-                }
-    elif(isinstance(estimator, PLSReg)):
-        n_components = X.shape[1] if X.shape[1] < 50 else 50
-        n_components_to_test = X.shape[1] if X.shape[1] < 10 else 10
-        estimator = PLSReg()
-        score_metrics = ["r2", "neg_mean_squared_error"]
-        refit = "neg_mean_squared_error"
-        params = {
-                'n_components': np.linspace(1, n_components, n_components_to_test, endpoint=True, dtype=np.int8),
-                'scale': [False, True],
-                'algorithm': ["svd", "nipals"]
-                }
-    elif(isinstance(estimator, svm.LinearSVR)):
-        estimator = svm.LinearSVR(max_iter=750)
-        score_metrics = ["r2", "neg_mean_squared_error"]
-        refit = "neg_mean_squared_error"
-        params = {
-                'epsilon': np.linspace(0.0, 1.0, 11, endpoint=True),
-                'C': np.linspace(0.01, 1.0, 11, endpoint=True)
-                }
-    elif(isinstance(estimator,KNeighborsClassifier)):
-        estimator = KNeighborsClassifier(n_jobs=-1)
-        score_metrics = "f1_weighted"
-        refit = "f1_weighted"
-        params = {
-                'n_neighbors': np.linspace(1, 3, 3, endpoint=True,
-                                        dtype=np.int8),
-                'weights': ("uniform", "distance"),
-                'leaf_size': np.linspace(1, 50, 3, endpoint=True,
-                                        dtype=np.int8),
-                'metric': ["euclidean", "manhattan", "chebyshev"]
-                }
-    elif(isinstance(estimator, svm.SVC)):
-        estimator = svm.SVC(gamma='scale')
-        score_metrics = "f1_weighted"
-        refit = "f1_weighted"
-        params = {
-                'C': np.linspace(1, 1e8, 10, endpoint=True, dtype=np.int8),
-                'kernel': ['linear']
-                }
-    elif(isinstance(estimator, DecisionTreeClassifier)):
-        estimator = DecisionTreeClassifier()
-        score_metrics = "f1_weighted"
-        refit = "f1_weighted"
-        params = {
-                'criterion': ["gini", "entropy"],
-                'max_depth': np.linspace(1, 33, 3, endpoint=True),
-                'min_samples_split': np.linspace(0.1, 1.0, 3, endpoint=True),
-                'min_samples_leaf': np.linspace(0.1, 0.5, 3, endpoint=True)
-                }
+    # Params
+    if(multithread):
+        n_jobs = -1
     else:
-        raise AttributeError("The type of classifier/regressor is \
-                            not supported.")
-    clf = GridSearchCV(estimator, params, cv=10, error_score=np.nan,
-                    scoring=score_metrics, refit=refit, n_jobs=n_jobs)
-    clf.fit(X, Y)
-    print("Evaluating done.")
+        n_jobs = None
 
-    # Keep that with lower mean AND std. dev. error
-    results_cv = DataFrame(clf.cv_results_)
-    scores_mean_std = abs(results_cv["mean_test_neg_mean_squared_error"]) + abs(results_cv["std_test_neg_mean_squared_error"])
-    index_best_score = scores_mean_std.argmin()
-    estimator.set_params(**results_cv.at[index_best_score, "params"])
-    # return clf.best_score_, clf.best_estimator_
-    return scores_mean_std[index_best_score], estimator
+    # Create initial pipeline
+    pipe = Pipeline([
+        ('scale', 'passthrough'),
+        ('estimate', 'passthrough')
+    ])
+
+    # Create parameters
+    param_grid = [
+        {
+            'scale': [Normalizer()],
+            'estimate': [PLSReg(max_iter=1e4)],
+            'estimate__n_components': np.linspace(1, 100, 40, endpoint=True, dtype=np.int8)
+        },
+        {
+            'scale': [Normalizer()],
+            'estimate': [Ridge(max_iter=1e4)],
+            'estimate__alpha': np.logspace(-1, 3, 100)
+        }
+    ]
+
+    X, _, y, _ = train_test_split(
+                                spectra.intensity,
+                                to_predict,
+                                shuffle=True,
+                                test_size=0.1,
+                                random_state=7
+                                )
+
+    # Test the grid of parameters
+    grid = GridSearchCV(pipe, param_grid, cv=10, error_score=np.nan,
+                    scoring="neg_mean_squared_error", refit=True, n_jobs=n_jobs,
+                    verbose=10, **kwargs)
+    grid.fit(X, y)
+
+    # Select best and return
+    cv_results = DataFrame(grid.cv_results_)
+
+    # Returns
+    return _doModelSelection(cv_results)
 
 
-def _trainModel(spectra, to_predict):
+def _testClassifiers(spectra, to_predict, multithread, **kwargs):    # Check types are correct and arrays are the same size
+    if("Spectra" not in spectra.__class__.__name__):
+        raise AttributeError("The spectra attribute must be of Spectra type.")
+    if(not isinstance(to_predict, np.ndarray)):
+        raise AttributeError("The to_predict attribute must be a numpy array.")
+    if(spectra.shape[0] != to_predict.shape[0]):
+        raise ValueError(f"Shape mismatch: value array of size \
+                         ({spectra.shape[0]}) and ({to_predict.shape[0]}) \
+                         don't match.")
+
+    # Params
+    if(multithread):
+        n_jobs = -1
+    else:
+        n_jobs = None
+
+    # Create initial pipeline
+    pipe = Pipeline([
+        ('scale', 'passthrough'),
+        ('estimate', 'passthrough')
+    ])
+
+    # Create parameters
+    param_grid = [
+        {
+            'scale': [Normalizer()],
+            'estimate': [LinearSVC(max_iter=1e4, random_state=7)],
+            'estimate__C': np.logspace(-1, 4, 50)
+        },
+        {
+            'scale': [Normalizer()],
+            'estimate': [KNeighborsClassifier(n_jobs=n_jobs)],
+            'estimate__n_neighbors': np.arange(3, 10, 1).astype(int),
+            'estimate__metric': ["euclidean", "minkowski", "chebyshev"]
+        }
+    ]
+
+    X, _, y, _ = train_test_split(
+                                spectra.intensity,
+                                label_binarize(to_predict, classes=np.unique(to_predict)),
+                                shuffle=True,
+                                test_size=0.1,
+                                random_state=7
+                                )
+
+    # Test the grid of parameters
+    grid = GridSearchCV(pipe, param_grid, cv=10, error_score=np.nan,
+                    scoring="f1_weighted", refit=True, n_jobs=n_jobs,
+                    verbose=10, **kwargs)
+
+    # Fit
+    grid.fit(X, y)
+
+    # Select best and return
+    cv_results = DataFrame(grid.cv_results_)
+
+    # Returns
+    return _doModelSelection(cv_results)
+
+
+def _doModelSelection(cv_results):
+    # Retrieve information of the highest rank estimator
+    best_info = cv_results[cv_results.rank_test_score == 1].iloc[0]
+    best = best_info.param_estimate
+    # Check which type of estimator it is and make an instance
+    if(isinstance(best, Ridge)):
+        best.set_params(**{
+            "alpha": best_info.param_estimate__alpha
+            })
+        rng = (0, 40)
+        info = {"name": "Ridge", "type": "regression", "scaler": best_info.param_scale}
+    elif(isinstance(best, PLSReg)):
+        best.set_params(**{
+            "n_components": best_info.param_estimate__n_components
+            })
+        rng = (40, 140)
+        info = {"name": "PLS", "type": "regression", "scaler": best_info.param_scale}
+    elif(isinstance(best, LinearSVC)):
+        best.set_params(**{
+            "C": best_info.param_estimate__C
+            })
+        rng = (0, 50)
+        info = {"name": "SVC", "type": "classification", "scaler": best_info.param_scale}
+    elif(isinstance(best, KNeighborsClassifier)):
+        best.set_params(**{
+            "n_neighbors": best_info.param_estimate__n_neighbors,
+            "metric": best_info.param_estimate__metric
+            })
+        rng = (50, 71)
+        info = {"name": "KNC", "type": "classification", "scaler": best_info.param_scale}
+    # Plot results for each type of estimator
+    if(info["type"] == "regression"):
+        results_metrics_means = np.array((
+            cv_results.iloc[:40].mean_test_score.mean(),
+            cv_results.iloc[40:140].mean_test_score.mean()
+            ))
+        plt.figure(figsize=(12,8))
+        plt.bar(["Ridge", "PLS"], results_metrics_means)
+        plt.xlabel("Name")
+        plt.ylabel("MSE")
+        plt.title("Mean MSE value across all the parameters tested on the different models")
+        plt.show()
+    elif(info["type"] == "classification"):
+        results_metrics_means = np.array((
+            cv_results.iloc[:50].mean_test_score.mean(),
+            cv_results.iloc[50:71].mean_test_score.mean()
+            ))
+        plt.figure(figsize=(12,8))
+        plt.bar(["SVC", "KNN"], results_metrics_means)
+        plt.xlabel("Name")
+        plt.ylabel("Weighted F1")
+        plt.title("Mean weighted F1-value across all the parameters tested on the different models")
+        plt.show()
+
+    # Return results as [mean, estimator, estimator_info_dict]
+    return cv_results[rng[0]:rng[1]].mean_test_score.mean(), best, info
+
+
+def _trainModel(spectra, to_predict, show_graph=False, cv=10):
     # Obtain information from model structure
     model = spectra._model[1]
     model_info = spectra._model[2]
-    data = np.stack(spectra.intensity)
-    data_aux = data.copy()
+    data = spectra.intensity
 
-    # Scale if in model (for learning_curve)
-    if("minmax" in model_info["name"]):
-        scaler = MinMaxScaler()
-        data_aux = scaler.fit_transform(data_aux)
-    if("PCA" in model_info["name"]):        
-        pca = model_info["pca"]
-        data_aux = pca.fit_transform(data_aux)
-        
-    scoring = "neg_mean_squared_error"
+    if(model_info["type"] == "regression"):
+        X, X_test, y, y_test = train_test_split(
+                                data,
+                                to_predict,
+                                shuffle=True,
+                                test_size=0.1,
+                                random_state=7
+                                )
+    elif(model_info["type"] == "classification"):
+        X, X_test, y, y_test = train_test_split(
+                                data,
+                                label_binarize(to_predict, classes=np.unique(to_predict)),
+                                shuffle=True,
+                                test_size=0.1,
+                                random_state=7
+                                )
+
+    # Scale
+    scaler = model_info["scaler"]
+    X = scaler.fit_transform(X)
+    X_test = scaler.transform(X_test)
+    spectra._model[2]["scaler"] = scaler
+    
+    # Fit to model    
+    model.fit(X, y)    
+
+    # Predict train and test sets
+    y_train_pred = model.predict(X)
+    y_test_pred = model.predict(X_test)
+
+    if(model_info["type"] == "regression"):
+        y_train_pred = y_train_pred.reshape(-1)
+        y_test_pred = y_test_pred.reshape(-1)
+
+    results = {"Y_train": y,
+            "Y_test": y_test,
+            "Y_test_pred": y_test_pred,
+            "Y_train_pred": y_train_pred,
+            "X_train": X,
+            "X_test": X_test}
 
     # Scoring metric
     if(model_info["type"] == "regression"):
         scoring = "neg_mean_squared_error"
+        # Regression line plot
+        # Residuals plot
+        # Frequencies' weights background plot
+        # Principal Component Plot (if PLS)
     elif(model_info["type"] == "classification"):
         scoring = "f1_weighted"
+        # ROC Curve
+        # Confusion Matrix
+        # Frequencies' weights background plot
+    _plotResults(results, model_info["type"], model, spectra)
 
-    # Get optimum test size based on the learning curve
-    train_sizes, train_scores, test_scores = learning_curve(model, data_aux, to_predict, cv=10, scoring=scoring)
-
-    train_scores_mean = np.mean(train_scores, axis=1)
-    train_scores_std = np.std(train_scores, axis=1)
-    test_scores_mean = np.mean(test_scores, axis=1)
-    test_scores_std = np.std(test_scores, axis=1)
-    diff_scores = (abs(test_scores_mean) + abs(test_scores_std) - abs(train_scores_mean) - abs(train_scores_std))
-    
-    min_diff_score = train_sizes[diff_scores.argmin()]
-
-    plt.figure(figsize=(15,12))
-    plt.fill_between(train_sizes, train_scores_mean - train_scores_std,
-                            train_scores_mean + train_scores_std, alpha=0.1,
-                            color="r")
-    plt.fill_between(train_sizes, test_scores_mean - test_scores_std,
-                        test_scores_mean + test_scores_std, alpha=0.1,
-                        color="b")
-    plt.plot(train_sizes, train_scores_mean, "o-", color="red", label="Training score")
-    plt.plot(train_sizes, test_scores_mean, "o-", color="blue", label="Cross-validation score")
-
-    plt.title("Learning Curve")
-    plt.xlabel("Number of training samples")
-    plt.ylabel("Negative Mean Squared Error")
-    plt.legend()
-    plt.show()
-    
-    # Process data accordingly, first split
-    X, X_test, Y, Y_test = train_test_split(data, to_predict, test_size=1 - min_diff_score/data.shape[0],
-                                            shuffle=True, random_state=0)
-    
-    # Scale if in model
-    if("minmax" in model_info["name"]):
-        scaler = MinMaxScaler()
-        X = scaler.fit_transform(X)
-        X_test = scaler.transform(X_test)
-        spectra._model[2]["scaler"] = scaler
-    if("PCA" in model_info["name"]):        
-        pca = model_info["pca"]
-        X = pca.fit_transform(X)
-        X_test = pca.transform(X_test)
-    
-    # Fit to model    
-    model.fit(X, Y)
-
-    # Predict train and test sets
-    Y_train_pred = model.predict(X)
-    Y_test_pred = model.predict(X_test)
-    return {"Y_train": Y,
-            "Y_test": Y_test,
-            "Y_test_pred": Y_test_pred,
-            "Y_train_pred": Y_train_pred}
+    return results
 
 
 def _predict(spectra, index):
@@ -322,21 +327,143 @@ def _predict(spectra, index):
     model_info = spectra._model[2]
 
     if(index != -1 and not isinstance(index, int)):
-        data = np.stack(spectra.intensity[index].copy())
+        data = spectra.intensity[index].copy()
     elif(index == -1):
-        data = np.stack(spectra.intensity.copy())
+        data = spectra.intensity.copy()
     elif(isinstance(index, int)):
-        data = np.stack(spectra.intensity[index].copy()).reshape(1, -1)
+        data = spectra.intensity[index].copy().reshape(1, -1)
 
-    # Scale if in model
-    if("std" in model_info["name"]):
-        scaler = model_info["scaler"]
-        data = scaler.transform(data)
-    elif("minmax" in model_info["name"]):
-        scaler = model_info["scaler"]
-        data = scaler.transform(data)
-    if("PCA" in model_info["name"]):        
-        pca = model_info["pca"]
-        data = pca.transform(data)
+    scaler = model_info["scaler"]
+    data = scaler.transform(data)
 
     return model.predict(data)
+
+
+def _plotResults(results, estimator_type, model, spectra):
+    plt.figure(figsize=(15,20))
+    if(estimator_type == "regression"):
+        scoring = "neg_mean_squared_error"        
+        if(isinstance(model, _PLS)):
+            n_rows = 4   
+        else:
+            n_rows = 3
+        # Position 1-1
+        ax1 = plt.subplot(n_rows, 2, 1)
+        plt.scatter(results["Y_train"], results["Y_train_pred"], color="gray", label="Training set")
+        plt.scatter(results["Y_test"], results["Y_test_pred"], color="black", label="Testing set")
+        ax1.set_title("Predicted vs. Measured")
+        ax1.set_xlabel("Measured Value")
+        ax1.set_ylabel("Predicted Value")
+        regress = linregress(results["Y_train"], results["Y_train_pred"])
+        plt.plot(results["Y_train"], (results["Y_train"]*regress.slope + regress.intercept))
+        ax1.legend()
+        # Positoin 1-2
+        ax2 = plt.subplot(n_rows, 2, 2)
+        plt.scatter(results["Y_train_pred"], results["Y_train"] - results["Y_train_pred"], color="gray", label="Training set")
+        plt.scatter(results["Y_test"], results["Y_test"] - results["Y_test_pred"], color="black", label="Testing set")
+        ax2.set_title("Residuals Plot")
+        ax2.set_xlabel("Predicted Value")
+        ax2.set_ylabel("Residuals")
+        ax2.legend()
+        # Position 2-1 and 2-2
+        ax3 = plt.subplot(n_rows, 1, 2)
+        weights = model.coef_
+        plt.plot(spectra.wavenumbers, weights)
+        ax3.set_title("Weights of the shifts on the model")
+        ax3.set_xlabel("Raman shift")
+        ax3.set_ylabel("Weight")
+        ax3.set_xlim([spectra.wavenumbers.min(), spectra.wavenumbers.max()])
+        # Position 4-1 and 4-2
+        ax5 = plt.subplot(n_rows, 1, 3)
+        plt.hist(results["Y_train"] - results["Y_train_pred"], 10, density=True, alpha=0.5, label="Training set")
+        plt.hist(results["Y_test"] - results["Y_test_pred"], 10, density=True, alpha=0.75, label="Testing set")
+        ax5.set_title("Residuals distribution plot")
+        ax5.set_xlabel("Residuals")
+        ax5.set_ylabel("Ocurrences (w.r.t. area = 1)")
+        ax5.legend()
+        # Position 3-1 and 3-2
+        if(isinstance(model, _PLS)):
+            ax4 = plt.subplot(n_rows, 1, 4)
+            x_weights = model.x_weights_
+            plt.plot(spectra.wavenumbers, x_weights[:, 0], label="PC1")
+            if(x_weights.shape[1] > 1):
+                plt.plot(spectra.wavenumbers, x_weights[:, 1], label="PC2")
+            ax4.set_title("Weights of the shifts on the model of the PCs")
+            ax4.set_xlabel("Raman shift")
+            ax4.set_ylabel("Weight")
+            ax4.set_xlim([spectra.wavenumbers.min(), spectra.wavenumbers.max()])
+            ax4.legend()
+    elif(estimator_type == "classification"):
+        scoring = "f1_weighted"
+        classes = np.unique(results["Y_train"])
+        n_classes = classes.shape[0]
+        # ROC Curve
+        ax1 = plt.subplot(3, 1, 1)
+        # # Compute ROC curve and ROC area for each class
+        y_test = results["Y_test"]
+        y_score = model.decision_function(results["X_test"]) if isinstance(model, LinearSVC) else model.predict_proba(results["X_test"])
+        fpr = dict()
+        tpr = dict()
+        roc_auc = dict()
+        if (n_classes > 2):
+            for i in range(n_classes):            
+                fpr[i], tpr[i], _ = roc_curve(y_test[:, i], y_score[:, i])
+                roc_auc[i] = auc(fpr[i], tpr[i])
+            for i in range(n_classes):
+                plt.plot(fpr[i], tpr[i], lw=2,
+                        label='ROC curve of class {0} (area = {1:0.2f})'
+                        ''.format(classes[i], roc_auc[i]))  
+        else:
+            fpr, tpr, _ = roc_curve(y_test, y_score)
+            roc_auc = auc(fpr, tpr)
+            plt.plot(fpr, tpr, lw=2,
+                    label='ROC curve (area = {0:0.2f})'
+                    ''.format(roc_auc))
+        plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+        ax1.set_title("ROC Curve")
+        ax1.set_xlabel("False Positives Rate")
+        ax1.set_ylabel("True Positives Rate")
+        ax1.legend()
+        # Confusion Matrix
+        ax2 = plt.subplot(3, 2, 3)
+        heatmap(confusion_matrix(results["Y_train"], results["Y_train_pred"]),
+                                 xticklabels=classes, yticklabels=classes,
+                                 cmap="Greens",
+                                 annot=True,
+                                 fmt="g")
+        ax2.set_title("Confusion matrix for training dataset")
+        ax2.set_ylim([0, n_classes])
+        ax3 = plt.subplot(3, 2, 4)
+        heatmap(confusion_matrix(results["Y_test"], results["Y_test_pred"]),
+                                 xticklabels=classes, yticklabels=classes,
+                                 cmap="Blues",
+                                 annot=True,
+                                 fmt="g")
+        ax3.set_title("Confusion matrix for testing dataset")
+        ax3.set_ylim([0, n_classes])
+        # Classification report
+        ax4 = plt.subplot(3, 1, 3)
+        p = precision_score(results["Y_train"], results["Y_train_pred"])
+        r = recall_score(results["Y_train"], results["Y_train_pred"])
+        f1 = f1_score(results["Y_train"], results["Y_train_pred"], average="weighted")
+        a = accuracy_score(results["Y_train"], results["Y_train_pred"])
+
+        pt = precision_score(results["Y_test"], results["Y_test_pred"])
+        rt = recall_score(results["Y_test"], results["Y_test_pred"])
+        f1t = f1_score(results["Y_test"], results["Y_test_pred"], average="weighted")
+        at = accuracy_score(results["Y_test"], results["Y_test_pred"])
+
+        r1 = [0, 1.5]
+        r2 = [x + 0.25 for x in r1]
+        r3 = [x + 0.25 for x in r2]
+        r4 = [x + 0.25 for x in r3]
+        plt.bar(r1, [p, pt], width=0.25, label="Precision", color="black")
+        plt.bar(r2, [r, rt], width=0.25, label="Recall", color="gray")
+        plt.bar(r3, [f1, f1t], width=0.25, label="F1-Score", color="darkgray")
+        plt.bar(r4, [a, at], width=0.25, label="Accuracy", color="lightgray")
+        ax4.set_title("Classification summary report")
+        ax4.set_xlabel("Group")
+        ax4.set_ylabel("Value")
+        plt.xticks([r + 0.25 for r in [0.125, 1.625]], ['Train', 'Test'])
+        ax4.legend(loc="lower center")
+    pass
