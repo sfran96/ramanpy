@@ -13,7 +13,7 @@ from glob import glob as _glob
 import numpy as np
 from ._parsers import _readCSV, _readJCAMP, _readMATLAB, _readSPC, _setPreValues, _removePreValues
 from ._preprocessing import _removeBaseline, _smoothSignal, _removeBackground, _detectPeaks, _cutSpectrum, _removeSpikes, _classDifferences
-from ._analytics import _testClassifiers, _testRegressors, _trainModel, _predict
+from ._analytics import _testClassifiers, _testRegressors, _trainModel, _predict, _resultsIsolatedFrequencies
 import pickle
 from datetime import datetime
 from pathlib import Path
@@ -43,6 +43,25 @@ class Spectra(DataFrame):
         return self.values
 
     def addSpectrum(self, wavenumbers, intensity):
+        '''
+        
+        Function used to add a spectrum to the Spectra DataFrame.
+
+
+        Parameters
+        ----------
+            wavenumbers : ndarray
+                Array that contains the raman shifts.
+            intensity : ndarray
+                Array that contains the intensities for each raman shift.
+
+
+        Returns
+        -------
+            None
+
+
+        '''
         if(len(self.index) == 0):
             self.__dict__.update(pd.DataFrame(columns=np.round(wavenumbers, self._max_decimals).astype("str")).__dict__)
             self.at[0] = intensity  # adding a row
@@ -121,6 +140,9 @@ class Spectra(DataFrame):
 
     def classDifferences(self, to_predict):
         _classDifferences(self, to_predict)
+
+    def resultsIsolatedFrequencies(self, to_predict, slots=10, cv=10):
+        _resultsIsolatedFrequencies(self, to_predict, slots=slots, cv=cv)
 
 
 def readFile(path, spectra, with_to_predict=False, **kwargs):

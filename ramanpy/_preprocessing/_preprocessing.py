@@ -149,8 +149,8 @@ def _detectPeaks(spectra, index=0, do_plot=True):
             plt.plot(x[peak], y[peak], "o", color="orange", label="Peak position @ {}".format(peak))
             plt.plot(x, res_func, linestyle="--")
             plt.title("Peak fitting on Raman spectra for sample {}".format(index))
-            plt.xlabel("Raman shift")
-            plt.ylabel("Intensity")
+            plt.xlabel("Raman shift ($cm^{-1}$")
+            plt.ylabel("Intensity (Arbitrary units)")
 
 
 def _cutSpectrum(spectra, roi, index=-1):
@@ -232,23 +232,23 @@ def _classDifferences(spectra, to_predict):
     for clss in classes:
         ax1.plot(spectra.wavenumbers, mode(spectra.intensity[(to_predict == clss).reshape(-1)]).mode[0], label=clss)
     ax1.set_title("Mode of the Raman spectra")
-    ax1.set_xlabel("Raman shift")
-    ax1.set_ylabel("Intensity")
+    ax1.set_xlabel("Raman shift ($cm^{-1}$)")
+    ax1.set_ylabel("Intensity (Arbitrary units)")
     ax1.set_xlim([spectra.wavenumbers.min(), spectra.wavenumbers.max()])
     ax1.legend()
     ax2 = plt.subplot(312)
     for clss in classes:
         ax2.plot(spectra.wavenumbers, np.mean(spectra.intensity[(to_predict == clss).reshape(-1)], axis=0), label=clss)
     ax2.set_title("Mean of the Raman spectra")
-    ax2.set_xlabel("Raman shift")
-    ax2.set_ylabel("Intensity")
+    ax2.set_xlabel("Raman shift ($cm^{-1}$)")
+    ax2.set_ylabel("Intensity (Arbitrary units)")
     ax2.set_xlim([spectra.wavenumbers.min(), spectra.wavenumbers.max()])
     ax2.legend()
     ax3 = plt.subplot(313)
     for clss in classes:
         ax3.plot(spectra.wavenumbers, spectra.intensity[(to_predict == clss).reshape(-1)].astype(np.float64).std(axis=0), label=clss)
     ax3.set_title("Std. Dev. of the Raman spectra")
-    ax3.set_xlabel("Raman shift")
-    ax3.set_ylabel("Intensity")
+    ax3.set_xlabel("Raman shift ($cm^{-1}$)")
+    ax3.set_ylabel("Intensity (Arbitrary units)")
     ax3.set_xlim([spectra.wavenumbers.min(), spectra.wavenumbers.max()])
     ax3.legend()

@@ -15,8 +15,8 @@ from sklearn.cross_decomposition.pls_ import _PLS
 from sklearn.linear_model import Ridge
 from sklearn.svm import LinearSVC
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.model_selection import train_test_split, GridSearchCV, KFold
-from sklearn.metrics import mean_squared_error, roc_curve, auc, confusion_matrix, precision_score, recall_score, f1_score, accuracy_score
+from sklearn.model_selection import GridSearchCV, KFold, cross_val_score
+from sklearn.metrics import mean_squared_error, roc_curve, auc, confusion_matrix, precision_score, recall_score, f1_score, accuracy_score, r2_score
 from sklearn.pipeline import Pipeline
 from sklearn.base import TransformerMixin
 from scipy.stats import linregress
@@ -31,14 +31,6 @@ class PLSReg(_PLS):
             deflation_mode="regression", mode="A",
             norm_y_weights=False, max_iter=max_iter, tol=tol,
             copy=copy, algorithm=algorithm)
-
-class ModifiedLabelEncoder(LabelEncoder):  # https://stackoverflow.com/questions/48929124/scikit-learn-how-to-compose-labelencoder-and-onehotencoder-with-a-pipeline
-
-    def fit_transform(self, y, *args, **kwargs):
-        return super().fit_transform(y).reshape(-1, 1)
-
-    def transform(self, y, *args, **kwargs):
-        return super().transform(y).reshape(-1, 1)
 
 
 def _testRegressors(spectra, to_predict, multithread, **kwargs):
@@ -110,7 +102,7 @@ def _testRegressors(spectra, to_predict, multithread, **kwargs):
         {
             'scale': [Normalizer()],
             'estimate': [PLSReg(max_iter=1e4)],
-            'estimate__n_components': np.linspace(1, 100, 40, endpoint=True, dtype=np.int8)
+            'estimate__n_components': np.linspace(1, 40, 40, endpoint=True, dtype=np.int8)
         },
         {
             'scale': [Normalizer()],
@@ -119,19 +111,11 @@ def _testRegressors(spectra, to_predict, multithread, **kwargs):
         }
     ]
 
-    X, _, y, _ = train_test_split(
-                                spectra.intensity,
-                                to_predict,
-                                shuffle=True,
-                                test_size=0.1,
-                                random_state=7
-                                )
-
     # Test the grid of parameters
     grid = GridSearchCV(pipe, param_grid, cv=10, error_score=np.nan,
                     scoring="neg_mean_squared_error", refit=True, n_jobs=n_jobs,
                     verbose=10, **kwargs)
-    grid.fit(X, y)
+    grid.fit(spectra.intensity, to_predict)
 
     # Select best and return
     cv_results = DataFrame(grid.cv_results_)
@@ -167,7 +151,7 @@ def _testClassifiers(spectra, to_predict, multithread, **kwargs):    # Check typ
         {
             'scale': [Normalizer()],
             'estimate': [LinearSVC(max_iter=1e4, random_state=7)],
-            'estimate__C': np.logspace(-1, 4, 50)
+            'estimate__C': np.logspace(-2, 4, 50)
         },
         {
             'scale': [Normalizer()],
@@ -177,13 +161,7 @@ def _testClassifiers(spectra, to_predict, multithread, **kwargs):    # Check typ
         }
     ]
 
-    X, _, y, _ = train_test_split(
-                                spectra.intensity,
-                                label_binarize(to_predict, classes=np.unique(to_predict)),
-                                shuffle=True,
-                                test_size=0.1,
-                                random_state=7
-                                )
+    X, y = spectra.intensity, label_binarize(to_predict, classes=np.unique(to_predict))
 
     # Test the grid of parameters
     grid = GridSearchCV(pipe, param_grid, cv=10, error_score=np.nan,
@@ -239,7 +217,7 @@ def _doModelSelection(cv_results):
         plt.figure(figsize=(12,8))
         plt.bar(["Ridge", "PLS"], results_metrics_means)
         plt.xlabel("Name")
-        plt.ylabel("MSE")
+        plt.ylabel("Mean MSE")
         plt.title("Mean MSE value across all the parameters tested on the different models")
         plt.show()
     elif(info["type"] == "classification"):
@@ -250,7 +228,7 @@ def _doModelSelection(cv_results):
         plt.figure(figsize=(12,8))
         plt.bar(["SVC", "KNN"], results_metrics_means)
         plt.xlabel("Name")
-        plt.ylabel("Weighted F1")
+        plt.ylabel("Mean weighted F1")
         plt.title("Mean weighted F1-value across all the parameters tested on the different models")
         plt.show()
 
@@ -265,26 +243,13 @@ def _trainModel(spectra, to_predict, show_graph=False, cv=10):
     data = spectra.intensity
 
     if(model_info["type"] == "regression"):
-        X, X_test, y, y_test = train_test_split(
-                                data,
-                                to_predict,
-                                shuffle=True,
-                                test_size=0.1,
-                                random_state=7
-                                )
+        X, y = data, to_predict
     elif(model_info["type"] == "classification"):
-        X, X_test, y, y_test = train_test_split(
-                                data,
-                                label_binarize(to_predict, classes=np.unique(to_predict)),
-                                shuffle=True,
-                                test_size=0.1,
-                                random_state=7
-                                )
+        X, y = data, label_binarize(to_predict, classes=np.unique(to_predict))
 
     # Scale
     scaler = model_info["scaler"]
     X = scaler.fit_transform(X)
-    X_test = scaler.transform(X_test)
     spectra._model[2]["scaler"] = scaler
     
     # Fit to model    
@@ -292,32 +257,18 @@ def _trainModel(spectra, to_predict, show_graph=False, cv=10):
 
     # Predict train and test sets
     y_train_pred = model.predict(X)
-    y_test_pred = model.predict(X_test)
 
     if(model_info["type"] == "regression"):
         y_train_pred = y_train_pred.reshape(-1)
-        y_test_pred = y_test_pred.reshape(-1)
 
     results = {"Y_train": y,
-            "Y_test": y_test,
-            "Y_test_pred": y_test_pred,
             "Y_train_pred": y_train_pred,
-            "X_train": X,
-            "X_test": X_test}
+            "X_train": X
+            }
 
-    # Scoring metric
-    if(model_info["type"] == "regression"):
-        scoring = "neg_mean_squared_error"
-        # Regression line plot
-        # Residuals plot
-        # Frequencies' weights background plot
-        # Principal Component Plot (if PLS)
-    elif(model_info["type"] == "classification"):
-        scoring = "f1_weighted"
-        # ROC Curve
-        # Confusion Matrix
-        # Frequencies' weights background plot
-    _plotResults(results, model_info["type"], model, spectra)
+    # Plot results
+    if(show_graph):
+        _plotResults(results, model_info["type"], model, spectra, cv)
 
     return results
 
@@ -326,12 +277,12 @@ def _predict(spectra, index):
     model = spectra._model[1]
     model_info = spectra._model[2]
 
-    if(index != -1 and not isinstance(index, int)):
+    if(isinstance(index, (list, tuple, np.ndarray))):
         data = spectra.intensity[index].copy()
+    elif(isinstance(index, int) and index != -1):
+        data = spectra.intensity[index].copy().reshape(1, -1)
     elif(index == -1):
         data = spectra.intensity.copy()
-    elif(isinstance(index, int)):
-        data = spectra.intensity[index].copy().reshape(1, -1)
 
     scaler = model_info["scaler"]
     data = scaler.transform(data)
@@ -339,48 +290,55 @@ def _predict(spectra, index):
     return model.predict(data)
 
 
-def _plotResults(results, estimator_type, model, spectra):
+def _plotResults(results, estimator_type, model, spectra, cv):
     plt.figure(figsize=(15,20))
-    if(estimator_type == "regression"):
-        scoring = "neg_mean_squared_error"        
+    if(estimator_type == "regression"):        
+        regress = linregress(results["Y_train"], results["Y_train_pred"])
+        print(f"Metrics: \nRMSECV = {round(math.sqrt(abs(cross_val_score(model, results['X_train'], results['Y_train'], scoring='neg_mean_squared_error', cv = cv).mean())), 2)} \nR2 = {round(r2_score(results['Y_train'], results['Y_train_pred']), 2)} \nR coefficient = {round(regress.rvalue, 2)}")
+        # print(f"Testing dataset metrics: \nRMSEP = {round(math.sqrt(abs(mean_squared_error(results['Y_test'], results['Y_test_pred']))), 2)} \nR2 = {round(r2_score(results['Y_test'], results['Y_test_pred']), 2)}\n")
+
         if(isinstance(model, _PLS)):
             n_rows = 4   
         else:
             n_rows = 3
         # Position 1-1
         ax1 = plt.subplot(n_rows, 2, 1)
-        plt.scatter(results["Y_train"], results["Y_train_pred"], color="gray", label="Training set")
-        plt.scatter(results["Y_test"], results["Y_test_pred"], color="black", label="Testing set")
+        plt.scatter(results["Y_train"], results["Y_train_pred"], color="gray")
+        # plt.scatter(results["Y_test"], results["Y_test_pred"], color="black", label="Testing set")
         ax1.set_title("Predicted vs. Measured")
         ax1.set_xlabel("Measured Value")
         ax1.set_ylabel("Predicted Value")
-        regress = linregress(results["Y_train"], results["Y_train_pred"])
-        plt.plot(results["Y_train"], (results["Y_train"]*regress.slope + regress.intercept))
+        plt.plot(results["Y_train"], (results["Y_train"]*regress.slope + regress.intercept), label="Model's regression line")
+        min_value = np.min([results["Y_train"].min(), results["Y_train_pred"].min()])
+        max_value = np.max([results["Y_train"].max(), results["Y_train_pred"].max()])
+        plt.plot(np.arange(min_value*0.7, max_value*1.2, 0.1), np.arange(min_value*0.7, max_value*1.2, 0.1), label="Ideal regression line", color="black")
+        ax1.set_xlim([min_value*0.8, max_value*1.1])
+        ax1.set_ylim([min_value*0.8, max_value*1.1])
         ax1.legend()
         # Positoin 1-2
         ax2 = plt.subplot(n_rows, 2, 2)
-        plt.scatter(results["Y_train_pred"], results["Y_train"] - results["Y_train_pred"], color="gray", label="Training set")
-        plt.scatter(results["Y_test"], results["Y_test"] - results["Y_test_pred"], color="black", label="Testing set")
+        plt.scatter(results["Y_train_pred"], results["Y_train"] - results["Y_train_pred"], color="gray")
+        # plt.scatter(results["Y_test"], results["Y_test"] - results["Y_test_pred"], color="black", label="Testing set")
         ax2.set_title("Residuals Plot")
         ax2.set_xlabel("Predicted Value")
         ax2.set_ylabel("Residuals")
-        ax2.legend()
+        # ax2.legend()
         # Position 2-1 and 2-2
         ax3 = plt.subplot(n_rows, 1, 2)
         weights = model.coef_
         plt.plot(spectra.wavenumbers, weights)
         ax3.set_title("Weights of the shifts on the model")
-        ax3.set_xlabel("Raman shift")
+        ax3.set_xlabel("Raman shift ($cm^{-1}$)")
         ax3.set_ylabel("Weight")
         ax3.set_xlim([spectra.wavenumbers.min(), spectra.wavenumbers.max()])
         # Position 4-1 and 4-2
         ax5 = plt.subplot(n_rows, 1, 3)
-        plt.hist(results["Y_train"] - results["Y_train_pred"], 10, density=True, alpha=0.5, label="Training set")
-        plt.hist(results["Y_test"] - results["Y_test_pred"], 10, density=True, alpha=0.75, label="Testing set")
+        plt.hist(results["Y_train"] - results["Y_train_pred"], 10, density=True, alpha=0.5)
+        # plt.hist(results["Y_test"] - results["Y_test_pred"], 10, density=True, alpha=0.75, label="Testing set")
         ax5.set_title("Residuals distribution plot")
         ax5.set_xlabel("Residuals")
         ax5.set_ylabel("Ocurrences (w.r.t. area = 1)")
-        ax5.legend()
+        # ax5.legend()
         # Position 3-1 and 3-2
         if(isinstance(model, _PLS)):
             ax4 = plt.subplot(n_rows, 1, 4)
@@ -389,7 +347,7 @@ def _plotResults(results, estimator_type, model, spectra):
             if(x_weights.shape[1] > 1):
                 plt.plot(spectra.wavenumbers, x_weights[:, 1], label="PC2")
             ax4.set_title("Weights of the shifts on the model of the PCs")
-            ax4.set_xlabel("Raman shift")
+            ax4.set_xlabel("Raman shift ($cm^{-1}$)")
             ax4.set_ylabel("Weight")
             ax4.set_xlim([spectra.wavenumbers.min(), spectra.wavenumbers.max()])
             ax4.legend()
@@ -398,10 +356,10 @@ def _plotResults(results, estimator_type, model, spectra):
         classes = np.unique(results["Y_train"])
         n_classes = classes.shape[0]
         # ROC Curve
-        ax1 = plt.subplot(3, 1, 1)
+        ax1 = plt.subplot(2, 1, 1)
         # # Compute ROC curve and ROC area for each class
-        y_test = results["Y_test"]
-        y_score = model.decision_function(results["X_test"]) if isinstance(model, LinearSVC) else model.predict_proba(results["X_test"])
+        y_test = results["Y_train"]
+        y_score = model.decision_function(results["X_train"]) if isinstance(model, LinearSVC) else model.predict_proba(results["X_train"])
         fpr = dict()
         tpr = dict()
         roc_auc = dict()
@@ -425,7 +383,7 @@ def _plotResults(results, estimator_type, model, spectra):
         ax1.set_ylabel("True Positives Rate")
         ax1.legend()
         # Confusion Matrix
-        ax2 = plt.subplot(3, 2, 3)
+        ax2 = plt.subplot(2, 2, 3)
         heatmap(confusion_matrix(results["Y_train"], results["Y_train_pred"]),
                                  xticklabels=classes, yticklabels=classes,
                                  cmap="Greens",
@@ -433,37 +391,101 @@ def _plotResults(results, estimator_type, model, spectra):
                                  fmt="g")
         ax2.set_title("Confusion matrix for training dataset")
         ax2.set_ylim([0, n_classes])
-        ax3 = plt.subplot(3, 2, 4)
-        heatmap(confusion_matrix(results["Y_test"], results["Y_test_pred"]),
-                                 xticklabels=classes, yticklabels=classes,
-                                 cmap="Blues",
-                                 annot=True,
-                                 fmt="g")
-        ax3.set_title("Confusion matrix for testing dataset")
-        ax3.set_ylim([0, n_classes])
         # Classification report
-        ax4 = plt.subplot(3, 1, 3)
-        p = precision_score(results["Y_train"], results["Y_train_pred"])
-        r = recall_score(results["Y_train"], results["Y_train_pred"])
-        f1 = f1_score(results["Y_train"], results["Y_train_pred"], average="weighted")
-        a = accuracy_score(results["Y_train"], results["Y_train_pred"])
+        ax4 = plt.subplot(2, 2, 4)
+        p = cross_val_score(model, results['X_train'], results['Y_train'], scoring='precision', cv = cv)
+        r = cross_val_score(model, results['X_train'], results['Y_train'], scoring='recall', cv = cv)
+        f1 = cross_val_score(model, results['X_train'], results['Y_train'], scoring='f1_weighted', cv = cv)
+        a = cross_val_score(model, results['X_train'], results['Y_train'], scoring='accuracy', cv = cv)
 
-        pt = precision_score(results["Y_test"], results["Y_test_pred"])
-        rt = recall_score(results["Y_test"], results["Y_test_pred"])
-        f1t = f1_score(results["Y_test"], results["Y_test_pred"], average="weighted")
-        at = accuracy_score(results["Y_test"], results["Y_test_pred"])
-
-        r1 = [0, 1.5]
+        r1 = [0]
         r2 = [x + 0.25 for x in r1]
         r3 = [x + 0.25 for x in r2]
         r4 = [x + 0.25 for x in r3]
-        plt.bar(r1, [p, pt], width=0.25, label="Precision", color="black")
-        plt.bar(r2, [r, rt], width=0.25, label="Recall", color="gray")
-        plt.bar(r3, [f1, f1t], width=0.25, label="F1-Score", color="darkgray")
-        plt.bar(r4, [a, at], width=0.25, label="Accuracy", color="lightgray")
-        ax4.set_title("Classification summary report")
-        ax4.set_xlabel("Group")
+        plt.bar(r1, [p], width=0.25, label="Precision", color="black")
+        plt.bar(r2, [r], width=0.25, label="Recall", color="gray")
+        plt.bar(r3, [f1], width=0.25, label="F1-Score", color="darkgray")
+        plt.bar(r4, [a], width=0.25, label="Accuracy", color="lightgray")
+        ax4.set_title("Classification CV summary report")
+        ax4.set_xlabel("Score")
         ax4.set_ylabel("Value")
-        plt.xticks([r + 0.25 for r in [0.125, 1.625]], ['Train', 'Test'])
         ax4.legend(loc="lower center")
-    pass
+
+def _resultsIsolatedFrequencies(spectra, to_predict, slots=10, cv=10):
+    # Get spectra for the different ranges
+    if(isinstance(slots, int)):
+        splitted_wavenumbers_indices = np.array_split(range(len(spectra.wavenumbers)), slots)
+    else:
+        AttributeError("The slots property must be an integer.")
+    # Train already existing model to the different ranges
+    model = spectra._model
+    model_info = model[2]
+    results = {}
+    for wavenumbers_indices in splitted_wavenumbers_indices:
+        spectra_aux = spectra.iloc[:, wavenumbers_indices]
+        spectra_aux._model = model
+        key = "{}-{}$cm^{{-1}}$".format(spectra.wavenumbers[wavenumbers_indices[0]], spectra.wavenumbers[wavenumbers_indices[-1]])
+        results[key] = spectra_aux.trainModel(to_predict, False)
+    
+    if(model_info["type"] == "regression"):
+        plt.figure(figsize=(15,28))
+        plt.subplot(211)
+        # For each results dictionary, calculate the cross-validation r2-score using Python's comprehensions
+        r2scores = [cross_val_score(model[1], r["X_train"], r["Y_train"], scoring="r2", cv = cv).mean() for r in results.values()]
+        clrs = ['green' if (x in np.sort(r2scores)[-3:]) else 'grey' for x in r2scores]
+        plt.bar(results.keys(), r2scores, color=clrs) 
+        plt.xticks(rotation=90)
+        plt.ylabel("R2 score")
+        plt.xlabel("Raman shift range")
+        plt.title("R2 CV of the different wavenumber groups (higher is better)")
+
+        plt.subplot(212)
+        # For each results dictionary, calculate the cross-validation RMSECV using Python's comprehensions
+        rmses = [math.sqrt(abs(cross_val_score(model[1], r["X_train"], r["Y_train"], scoring="neg_mean_squared_error", cv = cv).mean())) for r in results.values()]
+        clrs = ['green' if (x in np.sort(rmses)[:3]) else 'grey' for x in rmses]
+        plt.bar(results.keys(), rmses, color=clrs) 
+        plt.xticks(rotation=90)
+        plt.ylabel("RMSECV")
+        plt.xlabel("Raman shift range")
+        plt.title("RMSE CV of the different wavenumber groups (smaller is better)")
+    elif(model_info["type"] == "classification"):        
+        plt.figure(figsize=(15,60))
+        plt.subplot(411)
+        # For each results dictionary, calculate the cross-validation r2-score using Python's comprehensions
+        weighted_f1s = [cross_val_score(model[1], r["X_train"], r["Y_train"], scoring="f1_weighted", cv = cv).mean() for r in results.values()]
+        clrs = ['green' if (x in np.sort(weighted_f1s)[-3:]) else 'grey' for x in weighted_f1s]
+        plt.bar(results.keys(), weighted_f1s, color=clrs) 
+        plt.xticks(rotation=90)
+        plt.ylabel("Weighted F1 score")
+        plt.xlabel("Raman shift range")
+        plt.title("Weighted F1 CV of the different wavenumber groups (higher is better)")
+
+        plt.subplot(412)
+        # For each results dictionary, calculate the cross-validation RMSECV using Python's comprehensions
+        accuracies = [math.sqrt(abs(cross_val_score(model[1], r["X_train"], r["Y_train"], scoring="accuracy", cv = cv).mean())) for r in results.values()]
+        clrs = ['green' if (x in np.sort(accuracies)[-3:]) else 'grey' for x in accuracies]
+        plt.bar(results.keys(), accuracies, color=clrs) 
+        plt.xticks(rotation=90)
+        plt.ylabel("Accuracy")
+        plt.xlabel("Raman shift range")
+        plt.title("Accuracy CV of the different wavenumber groups (higher is better)")
+
+        plt.subplot(413)
+        # For each results dictionary, calculate the cross-validation RMSECV using Python's comprehensions
+        precisions = [math.sqrt(abs(cross_val_score(model[1], r["X_train"], r["Y_train"], scoring="precision", cv = cv).mean())) for r in results.values()]
+        clrs = ['green' if (x in np.sort(precisions)[-3:]) else 'grey' for x in precisions]
+        plt.bar(results.keys(), precisions, color=clrs) 
+        plt.xticks(rotation=90)
+        plt.ylabel("Precision")
+        plt.xlabel("Raman shift range")
+        plt.title("Precision CV of the different wavenumber groups (higher is better)")
+
+        plt.subplot(414)
+        # For each results dictionary, calculate the cross-validation RMSECV using Python's comprehensions
+        recalls = [math.sqrt(abs(cross_val_score(model[1], r["X_train"], r["Y_train"], scoring="recall", cv = cv).mean())) for r in results.values()]
+        clrs = ['green' if (x in np.sort(recalls)[-3:]) else 'grey' for x in recalls]
+        plt.bar(results.keys(), recalls, color=clrs) 
+        plt.xticks(rotation=90)
+        plt.ylabel("Recall")
+        plt.xlabel("Raman shift range")
+        plt.title("Recall CV of the different wavenumber groups (higher is better)")

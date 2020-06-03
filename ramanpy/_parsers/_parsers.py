@@ -12,7 +12,7 @@ from scipy.io import loadmat
 import sys as sys
 import spc as spc
 import copy as _copy
-from pyjdxx import jdx
+from .._pyjdx_mod import jdx
 from jcamp import JCAMP_reader
 
 
