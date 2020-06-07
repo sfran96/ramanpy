@@ -36,18 +36,11 @@ class PLSReg(_PLS):
 def _testRegressors(spectra, to_predict, multithread, **kwargs):
     '''
 
-    Test multiple regressors (Support Vector Machines, Decision Tree,
-    and K-Nearest Neighbor using the scikit-learn library. The data is divided
-    into four parts:
-        - Unaltered data
-        - Normalized data
-        - Standardized data
-        - Data passed through a PowerTransformer
-
-    The altered data is then passed through a PCA (Principal Component Analysis
-    algorithm), which reduces the dimensions of the data. Both, dimension
-    reduced and input data ar kept. Then they're fed to the different
-    algorithms in all the forms.
+    Test multiple regressors (Ridge Regressor, and Partial Least Squares
+    Regressor) using the scikit-learn library. The data is passed through
+    a pipeline:
+        - Normalize/Standardize data
+        - Feed data to classifier
 
 
     Parameters
@@ -67,14 +60,17 @@ def _testRegressors(spectra, to_predict, multithread, **kwargs):
             [
                     0 -> Score of the best regressor
                     1 -> Regressor object
-                    2 -> Dictionary containing extra parameters {"name": Name \
-                    of the algorithm, includes if PCA was used or not \
-                    and the format of the data (i.e. normalized), "pca": PCA
-                    used to reduced the dimensions.}
+                    2 -> Dictionary containing metainfo:
+                        "name" -> Name of the algorithm
+                        "type" -> in this case it will be set to "classification"
+                        "scaler" -> Scaler object used by the best algorithm found
             ]
 
 
     '''
+    verbose = kwargs.get("verbose", 10)
+    del kwargs["verbose"]
+
     # Check types are correct and arrays are the same size
     if("Spectra" not in spectra.__class__.__name__):
         raise AttributeError("The spectra attribute must be of Spectra type.")
@@ -100,12 +96,12 @@ def _testRegressors(spectra, to_predict, multithread, **kwargs):
     # Create parameters
     param_grid = [
         {
-            'scale': [Normalizer()],
+            'scale': [Normalizer(), StandardScaler()],
             'estimate': [PLSReg(max_iter=1e4)],
             'estimate__n_components': np.linspace(1, 40, 40, endpoint=True, dtype=np.int8)
         },
         {
-            'scale': [Normalizer()],
+            'scale': [Normalizer(), StandardScaler()],
             'estimate': [Ridge(max_iter=1e4)],
             'estimate__alpha': np.logspace(-1, 3, 100)
         }
@@ -114,7 +110,7 @@ def _testRegressors(spectra, to_predict, multithread, **kwargs):
     # Test the grid of parameters
     grid = GridSearchCV(pipe, param_grid, cv=10, error_score=np.nan,
                     scoring="neg_mean_squared_error", refit=True, n_jobs=n_jobs,
-                    verbose=10, **kwargs)
+                    verbose=verbose, **kwargs)
     grid.fit(spectra.intensity, to_predict)
 
     # Select best and return
@@ -124,7 +120,42 @@ def _testRegressors(spectra, to_predict, multithread, **kwargs):
     return _doModelSelection(cv_results)
 
 
-def _testClassifiers(spectra, to_predict, multithread, **kwargs):    # Check types are correct and arrays are the same size
+def _testClassifiers(spectra, to_predict, multithread, **kwargs):
+    '''
+
+    Test multiple classifiers (Linear Support Vector Classifier, and
+    K-Nearest Neighbors) using the scikit-learn library. The data is
+    passed through a pipeline:
+        - Normalize/Standardize data
+        - Feed data to classifier
+
+
+    Parameters
+    ----------
+        spectra : Spectra
+            Spectra object that contains all samples.
+        to_predict : ndarray
+            Array that contains the data of interest.
+        multithread : bool
+            If enabled, when performing GridSearchCV n_jobs = -1
+
+
+    Returns
+    -------
+        chosen_classifier : ndarray
+            A 3 columns array that contains information of the best classifier
+            [
+                    0 -> Score of the best classifier
+                    1 -> Classifier object
+                    2 -> Dictionary containing metainfo:
+                        "name" -> Name of the algorithm, includes if PCA was used or not \
+                    and the format of the data (i.e. normalized)
+                        "type" -> in this case it will be set to "classification"
+                        "scaler" -> Scaler object used by the best algorithm found
+            ]
+
+
+    '''
     if("Spectra" not in spectra.__class__.__name__):
         raise AttributeError("The spectra attribute must be of Spectra type.")
     if(not isinstance(to_predict, np.ndarray)):
@@ -135,6 +166,9 @@ def _testClassifiers(spectra, to_predict, multithread, **kwargs):    # Check typ
                          don't match.")
 
     # Params
+    verbose = kwargs.get("verbose", 10)
+    del kwargs["verbose"]
+
     if(multithread):
         n_jobs = -1
     else:
@@ -149,12 +183,12 @@ def _testClassifiers(spectra, to_predict, multithread, **kwargs):    # Check typ
     # Create parameters
     param_grid = [
         {
-            'scale': [Normalizer()],
+            'scale': [Normalizer(), StandardScaler()],
             'estimate': [LinearSVC(max_iter=1e4, random_state=7)],
             'estimate__C': np.logspace(-2, 4, 50)
         },
         {
-            'scale': [Normalizer()],
+            'scale': [Normalizer(), StandardScaler()],
             'estimate': [KNeighborsClassifier(n_jobs=n_jobs)],
             'estimate__n_neighbors': np.arange(3, 10, 1).astype(int),
             'estimate__metric': ["euclidean", "minkowski", "chebyshev"]
@@ -166,7 +200,7 @@ def _testClassifiers(spectra, to_predict, multithread, **kwargs):    # Check typ
     # Test the grid of parameters
     grid = GridSearchCV(pipe, param_grid, cv=10, error_score=np.nan,
                     scoring="f1_weighted", refit=True, n_jobs=n_jobs,
-                    verbose=10, **kwargs)
+                    verbose=verbose, **kwargs)
 
     # Fit
     grid.fit(X, y)
@@ -179,6 +213,25 @@ def _testClassifiers(spectra, to_predict, multithread, **kwargs):    # Check typ
 
 
 def _doModelSelection(cv_results):
+    '''
+
+    Processes the results given by the GridSearchCV step, selects the best algorithm
+    and stores its metadata while plotting the results of the GridSearchCV
+
+
+    Parameters
+    ----------
+        cv_results: NumPy Array
+            Returned value by the GridSearchCV function.
+
+
+    Returns
+    -------
+        results: tuple
+            Return results as (mean, estimator, estimator_info_dict)
+
+
+    '''
     # Retrieve information of the highest rank estimator
     best_info = cv_results[cv_results.rank_test_score == 1].iloc[0]
     best = best_info.param_estimate
@@ -211,25 +264,25 @@ def _doModelSelection(cv_results):
     # Plot results for each type of estimator
     if(info["type"] == "regression"):
         results_metrics_means = np.array((
-            cv_results.iloc[:40].mean_test_score.mean(),
-            cv_results.iloc[40:140].mean_test_score.mean()
+            np.abs(cv_results.iloc[:40].mean_test_score).max(),
+            np.abs(cv_results.iloc[40:140].mean_test_score).max()
             ))
         plt.figure(figsize=(12,8))
         plt.bar(["Ridge", "PLS"], results_metrics_means)
         plt.xlabel("Name")
-        plt.ylabel("Mean MSE")
-        plt.title("Mean MSE value across all the parameters tested on the different models")
+        plt.ylabel("Max MSE")
+        plt.title("Max MSE value across all the parameters tested on the different models")
         plt.show()
     elif(info["type"] == "classification"):
         results_metrics_means = np.array((
-            cv_results.iloc[:50].mean_test_score.mean(),
-            cv_results.iloc[50:71].mean_test_score.mean()
+            cv_results.iloc[:50].mean_test_score.max(),
+            cv_results.iloc[50:71].mean_test_score.max()
             ))
         plt.figure(figsize=(12,8))
         plt.bar(["SVC", "KNN"], results_metrics_means)
         plt.xlabel("Name")
-        plt.ylabel("Mean weighted F1")
-        plt.title("Mean weighted F1-value across all the parameters tested on the different models")
+        plt.ylabel("Max weighted F1")
+        plt.title("Max weighted F1-value across all the parameters tested on the different models")
         plt.show()
 
     # Return results as [mean, estimator, estimator_info_dict]
@@ -274,6 +327,26 @@ def _trainModel(spectra, to_predict, show_graph=False, cv=10):
 
 
 def _predict(spectra, index):
+    '''
+
+    Predict given the index/indices of the samples from the spectra array that
+    you'd want to obtain.
+
+    Parameters
+    ----------
+        spectra: Spectra
+            Spectra object containing the model and the samples to predict
+        index: (int, list, tuple, np.ndarray)
+            Single position of the sample to predict or a collection of the indices of interest.
+
+    
+    Returns
+    -------
+        predicted: np.ndarray
+            Results of the model's prediction
+
+
+    '''
     model = spectra._model[1]
     model_info = spectra._model[2]
 
@@ -291,8 +364,33 @@ def _predict(spectra, index):
 
 
 def _plotResults(results, estimator_type, model, spectra, cv):
-    plt.figure(figsize=(15,20))
-    if(estimator_type == "regression"):        
+    '''
+
+    Plots the results of the training function.
+
+
+    Parameters
+    ----------
+        results: np.ndarray
+            Given results dictionary.
+        estimator_type: str
+            Type of problem: regression or classification
+        model: sklearn's estimator
+            Estimator with fit and predict method.
+        spectra: np.ndarray
+            Spectra data.
+        cv: int
+            K-Fold number of cross-validations.
+
+    
+    Returns
+    -------
+        None
+
+
+    '''
+    if(estimator_type == "regression"):
+        plt.figure(figsize=(15,20))
         regress = linregress(results["Y_train"], results["Y_train_pred"])
         print(f"Metrics: \nRMSECV = {round(math.sqrt(abs(cross_val_score(model, results['X_train'], results['Y_train'], scoring='neg_mean_squared_error', cv = cv).mean())), 2)} \nR2 = {round(r2_score(results['Y_train'], results['Y_train_pred']), 2)} \nR coefficient = {round(regress.rvalue, 2)}")
         # print(f"Testing dataset metrics: \nRMSEP = {round(math.sqrt(abs(mean_squared_error(results['Y_test'], results['Y_test_pred']))), 2)} \nR2 = {round(r2_score(results['Y_test'], results['Y_test_pred']), 2)}\n")
@@ -352,6 +450,7 @@ def _plotResults(results, estimator_type, model, spectra, cv):
             ax4.set_xlim([spectra.wavenumbers.min(), spectra.wavenumbers.max()])
             ax4.legend()
     elif(estimator_type == "classification"):
+        plt.figure(figsize=(15,14))
         scoring = "f1_weighted"
         classes = np.unique(results["Y_train"])
         n_classes = classes.shape[0]
@@ -393,10 +492,10 @@ def _plotResults(results, estimator_type, model, spectra, cv):
         ax2.set_ylim([0, n_classes])
         # Classification report
         ax4 = plt.subplot(2, 2, 4)
-        p = cross_val_score(model, results['X_train'], results['Y_train'], scoring='precision', cv = cv)
-        r = cross_val_score(model, results['X_train'], results['Y_train'], scoring='recall', cv = cv)
-        f1 = cross_val_score(model, results['X_train'], results['Y_train'], scoring='f1_weighted', cv = cv)
-        a = cross_val_score(model, results['X_train'], results['Y_train'], scoring='accuracy', cv = cv)
+        p = cross_val_score(model, results['X_train'], results['Y_train'], scoring='precision', cv = cv).mean()
+        r = cross_val_score(model, results['X_train'], results['Y_train'], scoring='recall', cv = cv).mean()
+        f1 = cross_val_score(model, results['X_train'], results['Y_train'], scoring='f1_weighted', cv = cv).mean()
+        a = cross_val_score(model, results['X_train'], results['Y_train'], scoring='accuracy', cv = cv).mean()
 
         r1 = [0]
         r2 = [x + 0.25 for x in r1]
@@ -412,6 +511,29 @@ def _plotResults(results, estimator_type, model, spectra, cv):
         ax4.legend(loc="lower center")
 
 def _resultsIsolatedFrequencies(spectra, to_predict, slots=10, cv=10):
+    '''
+
+    Processes what the results are if the spectra are divided into N slots.
+
+
+    Parameters
+    ----------
+        spectra: Spectra
+            Spectroscopy data of interest.
+        to_predict: np.ndarray
+            Known reference values for each spectrum in spectra.
+        slots: int
+            Number of compartments the wavenumbers is divided to.
+        cv: int
+            K-Fold cross-validation number.
+    
+
+    Returns
+    -------
+        None
+
+
+    '''
     # Get spectra for the different ranges
     if(isinstance(slots, int)):
         splitted_wavenumbers_indices = np.array_split(range(len(spectra.wavenumbers)), slots)
