@@ -1,8 +1,9 @@
-# -*- coding: utf-8 -*-
 """
+
 Created on April 2020
 
 @author: Francis Santos
+
 """
 import rampy as rp
 import numpy as np
@@ -10,42 +11,100 @@ from scipy.signal import find_peaks, peak_widths, medfilt
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 from scipy.stats import mode
+from ..utils import add_doc
 
-
-# 1 Gaussian form
 def _1gaussian(x, intensity, center, width):
     return intensity * np.exp(-(x-center)**2 / width)
 
 
-# 2 Gaussian form
 def _2gaussian(x, intensity1, center1, width1, intensity2, center2, width2):
     return intensity1 * np.exp(-(x-center1)**2 / width1) + \
             intensity2 * np.exp(-(x-center2)**2 / width2)
 
 
-# 1 Lorentzian form
 def _1lorentzian(x, intensity, center, width):
     return intensity * 1/(1 + ((x-center) / width)**2)
 
 
-# 2 Lorentzian form
 def _2lorentzian(x, intensity1, center1, width1, intensity2, center2, width2):
     return intensity1 * 1/(1 + ((x-center1) / width1)**2) + \
             intensity2 * 1/(1 + ((x-center2) / width2)**2)
 
 
-# Voigtian form
 def _1voigtian(x, intensity, center, width, lor_gaus):
     return intensity * (lor_gaus * (_1gaussian(x, intensity, center, width)/intensity) + (1-lor_gaus) * (_1lorentzian(x, intensity, center, width)/intensity))
 
 
-# PearsonIV
 def _1pearsonIV(x, intensity, position, width, shape_param1, shape_param2):
     return intensity * (1 + ((x - position) / width)**2)**(-shape_param1) * (np.exp(-shape_param2 * np.arctan((x - position) / width)))
 
 
-def _removeBaseline(spectra, roi, method, index=-1, inPlace=False, **kwargs):
-    if inPlace:
+@add_doc(
+    '''
+        Method to remove the baseline using RamPy's baseline function.
+
+
+        Parameters
+        ----------
+        spectra: np.ndarray
+            Spectroscopy data to process.
+        roi: np.ndarray
+            Region of interest to pay attention and keep during the application of the algorithm
+        method: str
+            Method used for baseline removal:
+                "poly": polynomial fitting, with splinesmooth the degree of the polynomial.
+                "unispline": spline with the UnivariateSpline function of Scipy, splinesmooth is
+                            the spline smoothing factor (assume equal weight in the present case);
+                "gcvspline": spline with the gcvspl.f algorythm, really robust.
+                            Spectra must have x, y, ese in it, and splinesmooth is the smoothing factor;
+                            For gcvspline, if ese are not provided we assume ese = sqrt(y).
+                            WARNING: Requires the installation of the gcvspline Python package prior to use in the Python ENV used by Julia.
+                            See website for install instructions
+                "exp": exponential background;
+                "log": logarythmic background;
+                "rubberband": rubberband baseline fitting;
+                "als": automatic least square fitting following Eilers and Boelens 2005;
+                "arPLS": automatic baseline fit using the algorithm from Baek et al. 2015
+                "drpPLS" (DEFAULT): Baseline correction using asymmetrically reweighted penalized least squares smoothing, Analyst 140: 250-257.
+        index: (int, tuple, list, np.ndarray)
+            Index/indices to preprocess.
+        inplace: bool
+            Perform the change in the Spectra object (True) or create a new one and return (False)
+
+            kwargs
+            ------
+            polynomial_order : Int
+                The degree of the polynomial (0 for a constant), default = 1.
+            s : Float
+                spline smoothing coefficient for the unispline and gcvspline algorithms.
+            lam : Float
+                float, the lambda smoothness parameter for the ALS, ArPLS and drPLS algorithms. Typical values are between 10**2 to 10**9, default = 10**5 for ALS and ArPLS and default = 10**6 for drPLS.
+            p : Float
+                float, for the ALS algorithm, advised value between 0.001 to 0.1, default = 0.01.
+            ratio : float
+                ratio parameter of the arPLS and drPLS algorithm. default = 0.01 for arPLS and 0.001 for drPLS.
+            niter : Int
+                number of iteration of the ALS and drPLS algorithm, default = 10 for ALS and default = 100 for drPLS.
+            eta : Float
+                roughness parameter for the drPLS algorithm, is between 0 and 1, default = 0.5
+            p0_exp : List
+                containg the starting parameter for the exp baseline fit with curve_fit. Default = [1.,1.,1.].
+            p0_log : List
+                containg the starting parameter for the log baseline fit with curve_fit. Default = [1.,1.,1.,1.].
+        
+        
+        Returns
+        -------
+        if(inplace):
+            None
+        else:
+            New Spectra object with preprocessed signal
+
+
+    '''
+)
+def _removeBaseline(spectra, roi, method, index=-1, inplace=False, **kwargs):
+    if inplace:
         spectra_c = spectra
     else:
         spectra_c = spectra.copy()
@@ -57,7 +116,7 @@ def _removeBaseline(spectra, roi, method, index=-1, inPlace=False, **kwargs):
                                       method, **kwargs)
             spectra_c.intensity[i] = new_sig.reshape(-1,)
     else:
-        if(isinstance(index, tuple)):  # Multiple signals
+        if(isinstance(index, (tuple, list, np.ndarray))):  # Multiple signals
             for i in index:
                 new_sig, __ = rp.baseline(spectra_c.wavenumbers,
                                           spectra_c.intensity[i], roi,
@@ -69,13 +128,60 @@ def _removeBaseline(spectra, roi, method, index=-1, inPlace=False, **kwargs):
                                       method, **kwargs)
             spectra_c.intensity[index] = new_sig.reshape(-1,)
 
-    if not inPlace:
+    if not inplace:
         return spectra_c
 
 
-def _smoothSignal(spectra, index=-1, method="flat", inPlace=False,
+@add_doc(
+    '''
+        Method to smooth the signal using the RamPy library.
+
+        
+        Paremeters
+        ----------
+        spectra: np.ndarray
+        index: (int, tuple, array, np.ndarray)
+            Index/indices to preprocess.
+        method: str
+            Method for smoothing the signal;
+            choose between savgol (Savitzky-Golay),
+            GCVSmoothedNSpline, MSESmoothedNSpline,
+            DOFSmoothedNSpline,
+            whittaker,
+            'flat',
+            'hanning',
+            'hamming',
+            'bartlett',
+            'blackman'.
+        inplace: bool            
+            Perform the change in the Spectra object (True) or create a new one and return (False)
+        
+
+        kwargs
+        ------
+        window_length : int
+            The length of the filter window (i.e. the number of coefficients). window_length must be a positive odd integer.
+        polyorder : int
+            The order of the polynomial used to fit the samples. polyorder must be less than window_length.
+        Lambda : float
+            smoothing parameter of the Whittaker filter described in Eilers (2003). The higher the smoother the fit.
+        d : int
+            d parameter in Whittaker filter, see Eilers (2003).
+        ese_y : ndarray
+            errors associated with y (for the gcvspline algorithms)
+
+        Returns
+        -------
+        if(inplace):
+            None
+        else:
+            New Spectra object with preprocessed signal
+
+    '''
+)
+def _smoothSignal(spectra, index=-1, method="flat", inplace=False,
                   **kwargs):
-    if inPlace:
+    if inplace:
         spectra_c = spectra
     else:
         spectra_c = spectra.copy()
@@ -99,10 +205,33 @@ def _smoothSignal(spectra, index=-1, method="flat", inPlace=False,
                                 method, **kwargs)
             spectra_c.intensity[index] = new_sig[:len(spectra_c.wavenumbers)]
 
-    if not inPlace:
+    if not inplace:
         return spectra_c
 
 
+@add_doc(
+    '''
+
+    Detect the peaks using function fitting to Gaussian and Lorentzian functions
+    and (optionally) plot them.
+
+
+    Parameters
+    ----------
+    spectra: np.ndarray
+        Spectroscopy data of interest.
+    index: int
+        Spectrum number sample of interest.
+    do_plot: bool
+        If True plots the peaks detected.
+
+
+    Returns
+    -------
+    None
+
+    '''
+)
 def _detectPeaks(spectra, index=0, do_plot=True):
     # Obtain the full signals in a way they can be accessed more easily later
     x = spectra.wavenumbers
@@ -153,6 +282,26 @@ def _detectPeaks(spectra, index=0, do_plot=True):
             plt.ylabel("Intensity (Arbitrary units)")
 
 
+@add_doc(
+    '''
+
+    Cuts the spectra/spectrum specified.
+
+    
+    Parameters
+    ----------
+    spectra: np.ndarray
+    roi: (tuple, array, np.ndarray)
+    index: (int, tuple, array, np.ndarray)
+        Index/indices to preprocess.
+
+
+    Returns
+    -------
+    The resulting copy of the cut spectra/spectrum.
+
+    '''
+)
 def _cutSpectrum(spectra, roi, index=-1):
     spectra_c = spectra.__class__()
 
@@ -165,7 +314,7 @@ def _cutSpectrum(spectra, roi, index=-1):
             new_sig = spectra.intensity[i][index_strt:index_end]
             spectra_c.addSpectrum(new_wvnmbr, new_sig)
     else:
-        if(isinstance(index, tuple)):  # Multiple signals
+        if(isinstance(index, (tuple, list, np.ndarray))):  # Multiple signals
             for i in index:
                 new_sig = spectra.intensity[i][index_strt:index_end]
                 spectra_c.addSpectrum(new_wvnmbr, new_sig)
@@ -176,8 +325,33 @@ def _cutSpectrum(spectra, roi, index=-1):
     return spectra_c
 
 
-def _removeBackground(spectra, index_baseline, index=-1, inPlace=False):
-    if inPlace:
+@add_doc(
+    '''
+        Subtract the background having the background in the Spectra object.
+
+        
+        Parameters
+        ----------
+        spectra: np.ndarray
+            Spectra object.
+        index_baseline: int
+            Index position of the background signal.
+        index: (int, tuple, list, np.ndarray)
+            Indices/indices of the signals that are going to be substracted the signal form the index_baseline param.
+        inplace: bool
+            Perform the change in the Spectra object (True) or create a new one and return (False)
+
+
+        Returns
+        -------
+        if(inplace):
+            None
+        else:
+            New Spectra object with preprocessed signal
+    '''
+)
+def _removeBackground(spectra, index_baseline, index=-1, inplace=False):
+    if inplace:
         spectra_c = spectra
     else:
         spectra_c = spectra.copy()
@@ -199,12 +373,45 @@ def _removeBackground(spectra, index_baseline, index=-1, inPlace=False):
             new_sig = spectra_c.loc[index].intensity - spectra_c.loc[index_baseline]
             spectra_c.at[index, 'intensity'] = new_sig
 
-    if not inPlace:
+    if not inplace:
         return spectra_c
 
 
-def _removeSpikes(spectra, index=-1, inPlace=False, **kwargs):
-    if inPlace:
+@add_doc(
+    '''
+    Removes the spikes from the spectrum/spectra specified using a median filter.
+
+
+    Parameters
+    ----------
+    spectra: np.ndarray
+    index: (int, tuple, list, np.ndarray)
+        Index/indices to preprocess.
+    inplace: bool
+            Perform the change in the Spectra object (True) or create a new one and return (False)
+
+
+    kwargs
+    ------
+    volume : array_like
+        An N-dimensional input array.
+    kernel_size : array_like, optional
+        A scalar or an N-length list giving the size of the median filter window in each dimension. \
+        Elements of kernel_size should be odd. If kernel_size is a scalar, then this scalar is used as \
+        the size in each dimension. Default size is 3 for each dimension.
+
+
+    Returns
+    -------
+        if(inplace):
+            None
+        else:
+            New Spectra object with preprocessed signal
+
+    '''
+)
+def _removeSpikes(spectra, index=-1, inplace=False, **kwargs):
+    if inplace:
         spectra_c = spectra
     else:
         spectra_c = spectra.copy()
@@ -222,9 +429,16 @@ def _removeSpikes(spectra, index=-1, inPlace=False, **kwargs):
             new_sig = medfilt(spectra_c.loc[i].intensity, **kwargs)
             spectra_c.at[index, 'intensity'] = new_sig
 
-    if not inPlace:
+    if not inplace:
         return spectra_c
 
+@add_doc(
+    '''
+
+    Funtion to plot the different classes.
+
+    '''
+)
 def _classDifferences(spectra, to_predict):
     plt.figure(figsize=(14,20))
     ax1 = plt.subplot(311)

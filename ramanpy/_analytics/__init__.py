@@ -1,8 +1,9 @@
-# -*- coding: utf-8 -*-
 """
+
 Created on April 2020
 
-@author: frabb
+@author: Francis Santos
+
 """
 
 from ._analytics import _testRegressors, _testClassifiers, _trainModel, _predict, _resultsIsolatedFrequencies

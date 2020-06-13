@@ -1,8 +1,9 @@
-# -*- coding: utf-8 -*-
 """
+
 Created on April 2020
 
 @author: Francis Santos
+
 """
 from __future__ import division, print_function
 __all__ = ['Spectra', 'readFile', 'readFiles']
@@ -17,6 +18,7 @@ from ._analytics import _testClassifiers, _testRegressors, _trainModel, _predict
 import pickle
 from datetime import datetime
 from pathlib import Path
+from .utils import add_doc, copy_doc_string
 
 
 class Spectra(DataFrame):
@@ -42,7 +44,7 @@ class Spectra(DataFrame):
     def intensity(self):
         return self.values
 
-    def addSpectrum(self, wavenumbers, intensity):
+    @add_doc(
         '''
         
         Function used to add a spectrum to the Spectra DataFrame.
@@ -62,6 +64,8 @@ class Spectra(DataFrame):
 
 
         '''
+    )
+    def addSpectrum(self, wavenumbers, intensity):
         if(len(self.index) == 0):
             self.__dict__.update(pd.DataFrame(columns=np.round(wavenumbers, self._max_decimals).astype("str")).__dict__)
             self.at[0] = intensity  # adding a row
@@ -69,24 +73,32 @@ class Spectra(DataFrame):
             self.at[self.index.max() + 1] = intensity  # adding a row
         self.sort_index(inplace=True)
 
-    def removeBaseline(self, roi, method, index=-1, inPlace=False, **kwargs):
-        result = _removeBaseline(self, roi, method, index, inPlace, **kwargs)
-        if(not inPlace):
+    @copy_doc_string(_removeBaseline)
+    def removeBaseline(self, roi, method, index=-1, inplace=False, **kwargs):
+        result = _removeBaseline(self, roi, method, index, inplace, **kwargs)
+        if(not inplace):
             return result
 
-    def smoothSignal(self, index=-1, method="flat", inPlace=False,
+    @copy_doc_string(_smoothSignal)
+    def smoothSignal(self, index=-1, method="flat", inplace=False,
                      **kwargs):
-        result = _smoothSignal(self, index, method, inPlace, **kwargs)
-        if(not inPlace):
+        result = _smoothSignal(self, index, method, inplace, **kwargs)
+        if(not inplace):
             return result
 
+    @copy_doc_string(_detectPeaks)
     def detectPeaks(self, index=0, do_plot=True):
         _detectPeaks(self, index, do_plot)
 
+    @copy_doc_string(_cutSpectrum)
     def cutSpectrum(self, roi, index=-1):
         result = _cutSpectrum(self, roi, index)
         return result
 
+    @add_doc(
+        '''
+        '''
+    )
     def plotSignal(self, index=0, figsize=(15,10)):
         plt.figure(figsize=figsize)
         ax = plt.gca()
@@ -98,22 +110,44 @@ class Spectra(DataFrame):
         plt.ylim(self.intensity[index].min(), self.intensity[index].max())
         return ax
 
-    def removeBackground(self, index_baseline, index=-1, inPlace=False):
-        result = _removeBackground(self, index_baseline, index, inPlace)
-        if(not inPlace):
+    @copy_doc_string(_removeBackground)
+    def removeBackground(self, index_baseline, index=-1, inplace=False):
+        result = _removeBackground(self, index_baseline, index, inplace)
+        if(not inplace):
             return result
 
-    def removeSpikes(self, index=-1, inPlace=False, **kwargs):
-        result = _removeSpikes(self, index, inPlace)
-        if(not inPlace):
+    @copy_doc_string(_removeSpikes)
+    def removeSpikes(self, index=-1, inplace=False, **kwargs):
+        result = _removeSpikes(self, index, inplace)
+        if(not inplace):
             return result
 
+    @copy_doc_string(_testRegressors)
     def testRegressors(self, to_predict, multithread=False, **kwargs):
         self._model = _testRegressors(self, to_predict, multithread, **kwargs)
 
+    @copy_doc_string(_testClassifiers)
     def testClassifiers(self, to_predict, multithread=False, **kwargs):
         self._model = _testClassifiers(self, to_predict, multithread, **kwargs)
 
+    @add_doc(
+        '''
+
+        Function to save a trained model into the defined path in a Pickles wrapper.
+
+        
+        Parameters
+        ----------
+        path: str
+            Path to save the file to. Default is "models".
+
+        
+        Returns
+        -------
+        None
+
+        '''
+    )
     def saveModel(self, path="models"):
         if(not isinstance(self._model, type(None))):
             Path(path).mkdir(parents=True, exist_ok=True)
@@ -123,6 +157,24 @@ class Spectra(DataFrame):
         else:
             raise ValueError("There's no model to be saved at this moment.")
 
+    @add_doc(
+        '''
+
+        Function to load a previously trained model into the defined path in a Pickles wrapper.
+
+        
+        Parameters
+        ----------
+        path: str
+            Path to load the file from.
+
+        
+        Returns
+        -------
+        None
+
+        '''
+    )
     def loadModel(self, path_to_file):
         if(isinstance(path_to_file, str) and ".pkl" in path_to_file):
             with open(path_to_file, 'rb') as input:
@@ -132,19 +184,49 @@ class Spectra(DataFrame):
         else:
             raise AttributeError("The 'path_to_file' attribute must be of format *.pkl")
 
+    @copy_doc_string(_trainModel)
     def trainModel(self, to_predict, show_graph=False, cv = 10):
         return _trainModel(self, to_predict, show_graph, cv)
 
+    @copy_doc_string(_predict)
     def predictFromModel(self, index=0):
         return _predict(self, index)
 
+    @copy_doc_string(_classDifferences)
     def classDifferences(self, to_predict):
         _classDifferences(self, to_predict)
 
+    @copy_doc_string(_resultsIsolatedFrequencies)
     def resultsIsolatedFrequencies(self, to_predict, slots=10, cv=10):
         _resultsIsolatedFrequencies(self, to_predict, slots=slots, cv=cv)
 
 
+@add_doc(
+    '''
+
+    Reads one file. Can read CSV, SPC and JCAMP-DX files.
+
+    
+    Parameters
+    ----------
+    path: str
+        Path to the file of interest.
+    spectra: Spectra
+        Spectra object that will contain the newly read data.
+    with_to_predict: bool
+        If `True` the read files contain the reference value for training. Only read if type is CSV.
+    
+
+    kwargs
+    ------
+    Parameters for the different parsers.
+
+
+    Returns
+    -------
+    The reference values if `with_to_predict = True`.
+    '''
+)
 def readFile(path, spectra, with_to_predict=False, **kwargs):
     path = path.lower()
 
@@ -166,6 +248,35 @@ def readFile(path, spectra, with_to_predict=False, **kwargs):
                              by this software.""")
 
 
+@add_doc(    
+    '''
+
+    Read multiple files with the same format from one specific folder. Can read CSV, SPC and JCAMP-DX files.
+
+    
+    Parameters
+    ----------
+    path: str
+        Path of interest.
+    spectra: Spectra
+        Spectra object that will contain the newly read data.
+    frmt: str
+        File extension format.
+            "csv" / "txt" for CSV files
+            "spc" for SPC files
+            "jdx" / "jd" for JDX files
+    
+
+    kwargs
+    ------
+    Parameters for the different parsers.
+
+
+    Returns
+    -------
+    None
+    '''
+)
 def readFiles(path, spectra, frmt="spc", **kwargs):
     files = _glob(f"{path}/*.{frmt}")
     for file_pathname in files:

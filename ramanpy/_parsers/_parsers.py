@@ -1,8 +1,9 @@
-# -*- coding: utf-8 -*-
 """
-Created on Fri Apr  3 17:20:10 2020
 
-@author: frabb
+Created on April 2020
+
+@author: Francis Santos
+
 """
 __all__ = ['_readCSV', '_readSPC', '_readMATLAB', '_readJCAMP', '_setPreValues', '_removePreValues']
 import pandas as pd
@@ -14,6 +15,7 @@ import spc as spc
 import copy as _copy
 from .._pyjdx_mod import jdx
 from jcamp import JCAMP_reader
+from ..utils import add_doc
 
 
 class config:
@@ -38,6 +40,36 @@ def _removePreValues():
     config._set_values = False
 
 
+@add_doc(
+    '''
+
+    Read CSV files and create an Spectra object using the Pandas library.
+
+
+    Parameters
+    ----------
+    path: str
+        Path to the CSV file of interest.
+    spectra: Spectra
+        Spectra object that will contain these files.
+    with_to_predict: bool
+        If True, the CSV file contains the reference values.
+    
+
+    kwargs
+    ------
+    Parameters from the read_csv function on Pandas
+
+
+    Returns
+    -------
+    if(with_to_predict):
+        Return to_predict array
+    else:
+        None
+
+    '''
+)
 def _readCSV(path, spectra, with_to_predict=False, **kwargs):
     # Control variables
     finished = False or config._finished
@@ -144,6 +176,11 @@ def _readCSV(path, spectra, with_to_predict=False, **kwargs):
         return to_predict
 
 
+@add_doc(
+    '''
+    Unused function.
+    '''
+)
 def _readMATLAB(path, spectra, with_to_predict=False, **kwargs):
     file = loadmat(path, **kwargs)
     finished = False or config._finished
@@ -213,6 +250,31 @@ def _readMATLAB(path, spectra, with_to_predict=False, **kwargs):
         return to_predict
 
 
+@add_doc(
+    '''
+    
+    Read SPC file using the spc library developed by rohanisaac (https://github.com/rohanisaac/spc)
+
+    
+    Paremeters
+    ----------
+    path: str
+        Path to the file of interest.
+    spectra: Spectra
+        Object in which the spectra will be copied to.
+
+    
+    kwargs
+    ------
+    Kwargs contained in the spc module, check.
+
+
+    Returns
+    -------
+    None
+
+    '''
+)
 def _readSPC(path, spectra, **kwargs):
     # Cancelout output of this module
     _stdout = _copy.copy(sys.stdout)
@@ -227,6 +289,32 @@ def _readSPC(path, spectra, **kwargs):
         spectra.addSpectrum(wvnmbrs, signal.y)
 
 
+@add_doc(
+    '''
+    
+    Read JCAMP-DX file using a modified version of
+    the pyjdx library developed by vulpicastor (https://github.com/vulpicastor/pyjdx)
+
+    
+    Paremeters
+    ----------
+    path: str
+        Path to the file of interest.
+    spectra: Spectra
+        Object in which the spectra will be copied to.
+
+    
+    kwargs
+    ------
+    Kwargs contained in the spc module, check.
+
+
+    Returns
+    -------
+    None
+
+    '''
+)
 def _readJCAMP(path, spectra, **kwargs):
     try:
         first_reader = True
