@@ -2,7 +2,7 @@ import setuptools
 
 setuptools.setup(
      name='ramanpy',
-     version='0.1',
+     version='0.3',
      author="Francis Santos",
      author_email="francis.santosliranzo@ugent.be",
      description="A package designed to facilitate the signal processing of \
