@@ -65,7 +65,7 @@ def _1pearsonIV(x, intensity, position, width, shape_param1, shape_param2):
                 "rubberband": rubberband baseline fitting;
                 "als": automatic least square fitting following Eilers and Boelens 2005;
                 "arPLS": automatic baseline fit using the algorithm from Baek et al. 2015
-                "drpPLS" (DEFAULT): Baseline correction using asymmetrically reweighted penalized least squares smoothing, Analyst 140: 250-257.
+                "drPLS" (DEFAULT): Baseline correction using asymmetrically reweighted penalized least squares smoothing, Analyst 140: 250-257.
         index: (int, tuple, list, np.ndarray)
             Index/indices to preprocess.
         inplace: bool
