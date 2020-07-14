@@ -22,7 +22,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.base import TransformerMixin
 from scipy.stats import linregress
 from seaborn import heatmap
-from utils import add_doc
+from ..utils import add_doc
 
 
 class PLSReg(_PLS):

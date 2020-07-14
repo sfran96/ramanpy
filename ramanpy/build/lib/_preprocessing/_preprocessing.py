@@ -11,7 +11,7 @@ from scipy.signal import find_peaks, peak_widths, medfilt
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 from scipy.stats import mode
-from utils import add_doc
+from ..utils import add_doc
 
 def _1gaussian(x, intensity, center, width):
     return intensity * np.exp(-(x-center)**2 / width)

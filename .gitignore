@@ -8,3 +8,5 @@ models
 *.jpg
 .vscode/*
 images
+dist
+*.egg-info

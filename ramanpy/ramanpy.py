@@ -12,13 +12,13 @@ import matplotlib.pyplot as plt
 from pandas import DataFrame
 from glob import glob as _glob
 import numpy as np
-from ._parsers import _readCSV, _readJCAMP, _readMATLAB, _readSPC, _setPreValues, _removePreValues
-from ._preprocessing import _removeBaseline, _smoothSignal, _removeBackground, _detectPeaks, _cutSpectrum, _removeSpikes, _classDifferences
-from ._analytics import _testClassifiers, _testRegressors, _trainModel, _predict, _resultsIsolatedFrequencies
+from _parsers import _readCSV, _readJCAMP, _readMATLAB, _readSPC, _setPreValues, _removePreValues
+from _preprocessing import _removeBaseline, _smoothSignal, _removeBackground, _detectPeaks, _cutSpectrum, _removeSpikes, _classDifferences
+from _analytics import _testClassifiers, _testRegressors, _trainModel, _predict, _resultsIsolatedFrequencies
 import pickle
 from datetime import datetime
 from pathlib import Path
-from .utils import add_doc, copy_doc_string
+from utils import add_doc, copy_doc_string
 
 
 class Spectra(DataFrame):
